@@ -1,17 +1,35 @@
 // src/server.ts
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
-import dotenv from "dotenv";
 import net from "net";
 
-dotenv.config();
+import authRoutes from "./routes/auth";
+import pedidosRoutes from "./routes/pedidos";
+
+// Si usas un index agrupado, mantenlo.
+// Si no lo necesitas, puedes borrarlo.
+import apiRoutes from "./index";
+
+import shiftsRoutes from "./routes/shifts";
+
+
+
 
 const app = express();
-app.use(cors());
+
+// ================================
+// Middlewares
+// ================================
+app.use(cors()); // luego lo podemos cerrar por dominio/origen
 app.use(express.json());
 
-// Servir la carpeta PUBLIC
+
+app.use("/api/shifts", shiftsRoutes);
+// ================================
+// Static (public)
+// ================================
 app.use(express.static(path.join(__dirname, "../public")));
 
 // Ruta por defecto para login
@@ -19,21 +37,22 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../public/login.html"));
 });
 
-// ✅ Ruta “bonita” opcional (aunque con static ya funciona /impresoras.html)
+// Ruta “bonita” opcional
 app.get("/impresoras", (req, res) => {
   res.sendFile(path.join(__dirname, "../public/impresoras.html"));
 });
 
 // ================================
-// ✅ API: Prueba de impresión (RAW TCP 9100)
+// API: Prueba de impresión (RAW TCP 9100)
 // POST /api/impresoras/test
 // body: { ip, port, text, cutter?, timeout?, copies? }
+// ⚠️ Recomendación: proteger con auth + rol ADMIN
 // ================================
 app.post("/api/impresoras/test", async (req, res) => {
   try {
     const ip = String(req.body?.ip || "").trim();
     const port = Number(req.body?.port || 9100);
-    const text = String(req.body?.text || "").toString();
+    const text = String(req.body?.text || "");
     const cutter = req.body?.cutter !== undefined ? !!req.body.cutter : true;
     const timeout = Math.max(1000, Number(req.body?.timeout || 8000));
     const copies = Math.max(1, Number(req.body?.copies || 1));
@@ -57,19 +76,18 @@ app.post("/api/impresoras/test", async (req, res) => {
       const finishOk = () => {
         if (done) return;
         done = true;
-        try { socket.destroy(); } catch (_) {}
+        try { socket.destroy(); } catch {}
         resolve();
       };
 
       const finishErr = (err: any) => {
         if (done) return;
         done = true;
-        try { socket.destroy(); } catch (_) {}
+        try { socket.destroy(); } catch {}
         reject(err);
       };
 
       socket.setTimeout(timeout);
-
       socket.on("timeout", () => finishErr(new Error("Timeout conectando/imprimiendo")));
       socket.on("error", (err) => finishErr(err));
 
@@ -92,15 +110,23 @@ app.post("/api/impresoras/test", async (req, res) => {
   }
 });
 
-// Importación de rutas
-import authRoutes from "./routes/auth";
-import apiRoutes from "./index"; // rutas API agrupadas
+// ================================
+// API Routes
+// ================================
 
-// Montar rutas
-app.use("/api", authRoutes);
+// Recomendado: separar auth en /api/auth
+app.use("/api/auth", authRoutes);
+
+// Pedidos en /api/pedidos
+app.use("/api/pedidos", pedidosRoutes);
+
+// Si mantienes tu index agrupado:
 app.use("/api", apiRoutes);
 
-// Levantar servidor
-app.listen(3000, () => {
-  console.log("Servidor corriendo en http://localhost:3000");
+// ================================
+// Start
+// ================================
+const PORT = Number(process.env.PORT || 3000);
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });

@@ -798,6 +798,44 @@
       </div>
     </div>
 
+    <!-- Modal: Turno -->
+    <div
+      id="modalTurno"
+      class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    >
+      <div
+        class="bg-white dark:bg-slate-800 rounded-2xl p-5 w-[92%] max-w-md shadow-xl"
+      >
+        <h2 class="text-lg font-extrabold mb-2 text-slate-900 dark:text-white">
+          Iniciar turno
+        </h2>
+
+        <p
+          id="turnoInfo"
+          class="text-sm text-slate-600 dark:text-slate-300 mb-4"
+        >
+          Para ver pedidos debes iniciar el turno.
+        </p>
+
+        <div class="flex gap-2 justify-end">
+          <button
+            onclick="cerrarModalTurno()"
+            class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold"
+          >
+            Cancelar
+          </button>
+
+          <button
+            id="btnIniciarTurno"
+            onclick="iniciarTurno()"
+            class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-extrabold"
+          >
+            Iniciar
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 🔊 SONIDO -->
     <audio
       id="new-order-sound"

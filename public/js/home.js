@@ -4,17 +4,14 @@
 function showLoader(text = "Cargando...") {
   const loader = document.getElementById("loader");
   if (!loader) return;
-
   const p = loader.querySelector("p");
   if (p) p.textContent = text;
-
   loader.classList.remove("hidden");
 }
 
 function hideLoader() {
   const loader = document.getElementById("loader");
   if (!loader) return;
-
   loader.classList.add("hidden");
 }
 
@@ -24,18 +21,102 @@ function hideLoader() {
 function showModal(msg) {
   const modal = document.getElementById("modal");
   if (!modal) return;
-
   const t = document.getElementById("modal-text");
   if (t) t.textContent = msg;
-
   modal.classList.remove("hidden");
 }
 
 function cerrarModal() {
   const modal = document.getElementById("modal");
   if (!modal) return;
-
   modal.classList.add("hidden");
+}
+
+// ================================
+// 🔐 AUTH HELPERS (JWT + refresh)
+// ================================
+function getAccessToken() {
+  try {
+    return localStorage.getItem("access_token") || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function getRefreshToken() {
+  try {
+    return localStorage.getItem("refresh_token") || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function getUsuario() {
+  try {
+    return JSON.parse(localStorage.getItem("usuario") || "null");
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("usuario");
+  } catch (_) {}
+}
+
+async function tryRefreshAccessToken() {
+  const refresh_token = getRefreshToken();
+  if (!refresh_token) return null;
+
+  const r = await fetch("/api/auth/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token }),
+  });
+
+  if (!r.ok) return null;
+
+  const data = await r.json().catch(() => ({}));
+  if (!data.access_token) return null;
+
+  try {
+    localStorage.setItem("access_token", data.access_token);
+  } catch (_) {}
+
+  return data.access_token;
+}
+
+/**
+ * apiFetch: añade Authorization automáticamente y reintenta si hay 401
+ */
+async function apiFetch(url, options = {}) {
+  const token = getAccessToken();
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const resp1 = await fetch(url, { ...options, headers });
+
+  // Si no es 401, normal
+  if (resp1.status !== 401) return resp1;
+
+  // Intentar refresh y reintentar una vez
+  const newToken = await tryRefreshAccessToken();
+  if (!newToken) return resp1;
+
+  const headers2 = {
+    ...headers,
+    Authorization: `Bearer ${newToken}`,
+  };
+
+  return fetch(url, { ...options, headers: headers2 });
 }
 
 // ================================
@@ -68,7 +149,6 @@ function abrirModalDemora(pedido, msEnEstado) {
 function cerrarModalDemora() {
   const modal = document.getElementById("modalDemora");
   if (!modal) return;
-
   modal.classList.add("hidden");
   demoraAbierta = null;
 }
@@ -85,8 +165,13 @@ function marcarDemoraComoAvisada() {
   if (!demoraAbierta) return cerrarModalDemora();
 
   try {
-    localStorage.setItem(keyAvisado(demoraAbierta.id, demoraAbierta.estado), "1");
-    localStorage.removeItem(keyPosponer(demoraAbierta.id, demoraAbierta.estado));
+    localStorage.setItem(
+      keyAvisado(demoraAbierta.id, demoraAbierta.estado),
+      "1"
+    );
+    localStorage.removeItem(
+      keyPosponer(demoraAbierta.id, demoraAbierta.estado)
+    );
   } catch (_) {}
 
   const id = demoraAbierta.id;
@@ -99,7 +184,10 @@ function posponerDemora() {
 
   const until = Date.now() + POSPONER_MS;
   try {
-    localStorage.setItem(keyPosponer(demoraAbierta.id, demoraAbierta.estado), String(until));
+    localStorage.setItem(
+      keyPosponer(demoraAbierta.id, demoraAbierta.estado),
+      String(until)
+    );
   } catch (_) {}
 
   cerrarModalDemora();
@@ -129,7 +217,9 @@ function showHistoricoEn5MinModal(p) {
     localStorage.setItem(k, "1");
   } catch (_) {}
 
-  showModal(`Pedido #${p.id} está en "Listo" y pasará al histórico en 5 minutos.`);
+  showModal(
+    `Pedido #${p.id} está en "Listo" y pasará al histórico en 5 minutos.`
+  );
 }
 
 function esHistorico(p) {
@@ -149,19 +239,9 @@ let lastAutoRefresh = 0;
 
 // ✅ Usuario (nombre) para mostrar en tarjetas
 function getUsuarioNombre() {
-  let u = null;
-  try {
-    u = JSON.parse(localStorage.getItem("usuario") || "null");
-  } catch (_) {
-    u = null;
-  }
+  const u = getUsuario();
   const nombre =
-    u?.nombre ||
-    u?.Nombre ||
-    u?.name ||
-    u?.usuario ||
-    u?.displayName ||
-    "";
+    u?.nombre || u?.Nombre || u?.name || u?.usuario || u?.displayName || "";
   return (nombre || "").toString().trim() || "Usuario";
 }
 
@@ -281,57 +361,66 @@ function calcDuraciones(p) {
 
   const est = p.estado || "Recibido";
 
-  const tRec =
-    recibido
-      ? (prep
-          ? prep.getTime() - recibido.getTime()
-          : est === "Recibido"
-          ? now.getTime() - recibido.getTime()
-          : null)
-      : null;
+  const tRec = recibido
+    ? prep
+      ? prep.getTime() - recibido.getTime()
+      : est === "Recibido"
+      ? now.getTime() - recibido.getTime()
+      : null
+    : null;
 
-  const tPrep =
-    prep
-      ? (listo
-          ? listo.getTime() - prep.getTime()
-          : est === "En preparación"
-          ? now.getTime() - prep.getTime()
-          : null)
-      : null;
+  const tPrep = prep
+    ? listo
+      ? listo.getTime() - prep.getTime()
+      : est === "En preparación"
+      ? now.getTime() - prep.getTime()
+      : null
+    : null;
 
   const finListo = camino || entregado;
-  const tListo =
-    listo
-      ? (finListo
-          ? finListo.getTime() - listo.getTime()
-          : est === "Listo"
-          ? now.getTime() - listo.getTime()
-          : null)
-      : null;
+  const tListo = listo
+    ? finListo
+      ? finListo.getTime() - listo.getTime()
+      : est === "Listo"
+      ? now.getTime() - listo.getTime()
+      : null
+    : null;
 
-  const tCamino =
-    camino
-      ? (entregado
-          ? entregado.getTime() - camino.getTime()
-          : est === "En camino"
-          ? now.getTime() - camino.getTime()
-          : null)
-      : null;
+  const tCamino = camino
+    ? entregado
+      ? entregado.getTime() - camino.getTime()
+      : est === "En camino"
+      ? now.getTime() - camino.getTime()
+      : null
+    : null;
 
   const inicioTotal = recibido || created;
   const finTotal = entregado || now;
-  const tTotal = inicioTotal ? finTotal.getTime() - inicioTotal.getTime() : null;
+  const tTotal = inicioTotal
+    ? finTotal.getTime() - inicioTotal.getTime()
+    : null;
 
   const startEstado = getEstadoStart(p);
-  const tEstadoActual = startEstado ? now.getTime() - startEstado.getTime() : null;
+  const tEstadoActual = startEstado
+    ? now.getTime() - startEstado.getTime()
+    : null;
 
   return { tRec, tPrep, tListo, tCamino, tTotal, tEstadoActual };
 }
 
 // ================================
-// 🔵 Cargar pedidos del backend
+// 🔵 Cargar pedidos del backend (JWT)
 // ================================
 document.addEventListener("DOMContentLoaded", () => {
+  // Si no hay sesión, mandar a login
+  const token = getAccessToken();
+  const u = getUsuario();
+  if (!token || !u) {
+    showModal("No se ha iniciado sesión.");
+    setTimeout(() => (window.location.href = "/login.html"), 800);
+    return;
+  }
+
   cargarPedidos();
   setInterval(cargarPedidos, 10000);
   setInterval(tickTimers, 1000);
@@ -340,26 +429,43 @@ document.addEventListener("DOMContentLoaded", () => {
   setupModalDetalle();
 });
 
+document.addEventListener("DOMContentLoaded", async () => {
+  const shift = await checkTurnoActivo();
+  if (!shift) {
+    openTurnoModal();
+    // no cargues pedidos hasta iniciar turno
+    return;
+  }
+  cargarPedidos();
+  setInterval(cargarPedidos, 10000);
+  setInterval(tickTimers, 1000);
+  setupModalDetalle();
+});
+
 async function cargarPedidos() {
   try {
     if (primeraCarga) showLoader("Cargando pedidos...");
 
-    const usuarioLogin = JSON.parse(localStorage.getItem("usuario") || "null");
-    if (!usuarioLogin || !usuarioLogin.correo) {
+    const usuarioLogin = getUsuario();
+    if (!usuarioLogin) {
       hideLoader();
       showModal("No se ha iniciado sesión.");
+      setTimeout(() => (window.location.href = "/login.html"), 800);
       return;
     }
 
-    const puntoVentaUsuario =
-      usuarioLogin.PuntoVenta ||
-      usuarioLogin.puntoventa ||
-      usuarioLogin.puntoVenta ||
-      null;
+    // ✅ YA NO se usa correo / puntoVenta en frontend:
+    // el backend filtra por store_id del token.
+    const resPedidos = await apiFetch("/api/pedidos", { method: "GET" });
 
-    const resPedidos = await fetch(
-      `/api/pedidos?correo=${encodeURIComponent(usuarioLogin.correo)}`
-    );
+    // Si sigue 401 incluso tras refresh -> login
+    if (resPedidos.status === 401) {
+      hideLoader();
+      clearSession();
+      showModal("Sesión expirada. Inicia sesión de nuevo.");
+      setTimeout(() => (window.location.href = "/login.html"), 900);
+      return;
+    }
 
     if (!resPedidos.ok) {
       hideLoader();
@@ -378,19 +484,14 @@ async function cargarPedidos() {
 
     pedidos = pedidos.map(applyLocalTimestamps).map(ensureListoAtLocal);
 
-    if (puntoVentaUsuario) {
-      pedidos = pedidos.filter((p) => {
-        const pv = p.PuntoVenta || p.puntoventa || p.puntoVenta || p.puntoventa;
-        return pv === puntoVentaUsuario;
-      });
-    }
-
     pedidosCache = pedidos;
 
     detectarNuevosPedidos(pedidos);
 
     const recibido = pedidos.filter((p) => (p.estado || "") === "Recibido");
-    const preparacion = pedidos.filter((p) => (p.estado || "") === "En preparación");
+    const preparacion = pedidos.filter(
+      (p) => (p.estado || "") === "En preparación"
+    );
 
     // HOME: mostrar Listo SOLO si NO es histórico (Listo < 5 min)
     const listoPanel = pedidos.filter((p) => {
@@ -405,7 +506,11 @@ async function cargarPedidos() {
     renderColumna("preparacion", preparacion);
     renderColumna("listo", listoPanel);
 
-    actualizarContadores(recibido.length, preparacion.length, listoPanel.length);
+    actualizarContadores(
+      recibido.length,
+      preparacion.length,
+      listoPanel.length
+    );
     mostrarNombreLocal(usuarioLogin);
 
     checkDemoras();
@@ -465,7 +570,7 @@ function actualizarContadores(recibidoCount, prepCount, listoCount) {
 }
 
 // ================================
-// 🟠 Cambiar estado con loader
+// 🟠 Cambiar estado con loader (JWT)
 // ================================
 async function cambiarEstado(id, estado) {
   try {
@@ -474,33 +579,42 @@ async function cambiarEstado(id, estado) {
 
     // Regla: si ya está Listo, no permitir devolverse
     if (estActual === "Listo" && estado !== "Listo") {
-      showModal(`No puedes cambiar el Pedido #${id} porque ya está en "Listo".`);
+      showModal(
+        `No puedes cambiar el Pedido #${id} porque ya está en "Listo".`
+      );
       return;
     }
 
     showLoader("Actualizando estado...");
 
-    const res = await fetch("/api/pedidos/estado", {
+    const res = await apiFetch("/api/pedidos/estado", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, estado }),
     });
 
     hideLoader();
 
+    if (res.status === 401) {
+      clearSession();
+      showModal("Sesión expirada. Inicia sesión de nuevo.");
+      setTimeout(() => (window.location.href = "/login.html"), 900);
+      return;
+    }
+
     if (!res.ok) {
-      showModal("Error al actualizar el estado.");
-      console.error("Error al actualizar estado", res.status);
+      const data = await res.json().catch(() => ({}));
+      showModal(data.error || "Error al actualizar el estado.");
+      console.error("Error al actualizar estado", res.status, data);
       return;
     }
 
     // respaldo local (por si el fetch siguiente tarda)
     const mapField = {
-      "Recibido": "recibido_at",
+      Recibido: "recibido_at",
       "En preparación": "en_preparacion_at",
-      "Listo": "listo_at",
+      Listo: "listo_at",
       "En camino": "en_camino_at",
-      "Entregado": "entregado_at",
+      Entregado: "entregado_at",
     };
     const field = mapField[estado];
     if (field) setLocalTs(id, field, new Date().toISOString());
@@ -556,13 +670,16 @@ function crearTarjeta(p) {
       const remain = HISTORICO_DELAY_MS - ms;
       histHtml = `
         <div class="mb-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
-          Pasa a histórico en: <span class="hist-countdown">${formatCountdown(remain)}</span>
+          Pasa a histórico en: <span class="hist-countdown">${formatCountdown(
+            remain
+          )}</span>
         </div>
       `;
     }
   }
 
-  const permitirVolver = (p.estado || "") !== "Recibido" && (p.estado || "") !== "Listo";
+  const permitirVolver =
+    (p.estado || "") !== "Recibido" && (p.estado || "") !== "Listo";
 
   return `
     <div
@@ -591,35 +708,45 @@ function crearTarjeta(p) {
 
       ${histHtml}
 
-      <!-- ⏱️ tiempos (compacto) -->
       <div class="grid grid-cols-2 gap-2 text-[11px] mb-2">
         <div class="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 p-2">
           <span class="text-slate-500 dark:text-slate-300">En estado:</span>
-          <span class="font-extrabold text-slate-900 dark:text-white block dur-estado">${formatDuration(d.tEstadoActual)}</span>
+          <span class="font-extrabold text-slate-900 dark:text-white block dur-estado">${formatDuration(
+            d.tEstadoActual
+          )}</span>
         </div>
         <div class="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 p-2">
           <span class="text-slate-500 dark:text-slate-300">Total:</span>
-          <span class="font-extrabold text-slate-900 dark:text-white block dur-total">${formatDuration(d.tTotal)}</span>
+          <span class="font-extrabold text-slate-900 dark:text-white block dur-total">${formatDuration(
+            d.tTotal
+          )}</span>
         </div>
         <div class="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 p-2">
           <span class="text-slate-500 dark:text-slate-300">Recibido:</span>
-          <span class="font-bold text-slate-900 dark:text-white block dur-rec">${formatDuration(d.tRec)}</span>
+          <span class="font-bold text-slate-900 dark:text-white block dur-rec">${formatDuration(
+            d.tRec
+          )}</span>
         </div>
         <div class="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 p-2">
           <span class="text-slate-500 dark:text-slate-300">Preparación:</span>
-          <span class="font-bold text-slate-900 dark:text-white block dur-prep">${formatDuration(d.tPrep)}</span>
+          <span class="font-bold text-slate-900 dark:text-white block dur-prep">${formatDuration(
+            d.tPrep
+          )}</span>
         </div>
         <div class="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 p-2">
           <span class="text-slate-500 dark:text-slate-300">Listo:</span>
-          <span class="font-bold text-slate-900 dark:text-white block dur-listo">${formatDuration(d.tListo)}</span>
+          <span class="font-bold text-slate-900 dark:text-white block dur-listo">${formatDuration(
+            d.tListo
+          )}</span>
         </div>
         <div class="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 p-2">
           <span class="text-slate-500 dark:text-slate-300">Camino:</span>
-          <span class="font-bold text-slate-900 dark:text-white block dur-camino">${formatDuration(d.tCamino)}</span>
+          <span class="font-bold text-slate-900 dark:text-white block dur-camino">${formatDuration(
+            d.tCamino
+          )}</span>
         </div>
       </div>
 
-      <!-- Botones -->
       <div class="flex gap-2 flex-wrap justify-end">
         <button
           onclick="abrirDetallePedido(${p.id})"
@@ -757,7 +884,11 @@ function checkDemoras() {
 
     let until = 0;
     try {
-      until = parseInt(localStorage.getItem(keyPosponer(p.id, p.estado)) || "0", 10) || 0;
+      until =
+        parseInt(
+          localStorage.getItem(keyPosponer(p.id, p.estado)) || "0",
+          10
+        ) || 0;
     } catch (_) {
       until = 0;
     }
@@ -769,7 +900,7 @@ function checkDemoras() {
 }
 
 // ================================
-// 🧾 MODAL DETALLE (editable)
+// 🧾 MODAL DETALLE (editable) - (tu código igual)
 // ================================
 let detalleAbierto = null; // { id, originalText }
 
@@ -777,12 +908,10 @@ function setupModalDetalle() {
   const modal = document.getElementById("modalDetalle");
   if (!modal) return;
 
-  // click fuera -> cerrar
   modal.addEventListener("click", (e) => {
     if (e.target === modal) cerrarDetallePedido();
   });
 
-  // ESC -> cerrar
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       const m = document.getElementById("modalDetalle");
@@ -874,27 +1003,36 @@ async function guardarDetallePedido() {
 
   const nuevo = (ta.value ?? "").toString();
   const original = (detalleAbierto.originalText ?? "").toString();
-  if (nuevo === original) return; // nada que guardar
+  if (nuevo === original) return;
 
   try {
     showLoader("Guardando detalle...");
 
-    const res = await fetch("/api/pedidos/resumen", {
+    const res = await apiFetch("/api/pedidos/resumen", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: detalleAbierto.id, resumen_pedido: nuevo }),
     });
 
     hideLoader();
 
-    if (!res.ok) {
-      showModal("No se pudo guardar el detalle.");
+    if (res.status === 401) {
+      clearSession();
+      showModal("Sesión expirada. Inicia sesión de nuevo.");
+      setTimeout(() => (window.location.href = "/login.html"), 900);
       return;
     }
 
-    // actualiza cache local
-    const idx = pedidosCache.findIndex((p) => String(p.id) === String(detalleAbierto.id));
-    if (idx >= 0) pedidosCache[idx] = { ...pedidosCache[idx], resumen_pedido: nuevo };
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showModal(data.error || "No se pudo guardar el detalle.");
+      return;
+    }
+
+    const idx = pedidosCache.findIndex(
+      (p) => String(p.id) === String(detalleAbierto.id)
+    );
+    if (idx >= 0)
+      pedidosCache[idx] = { ...pedidosCache[idx], resumen_pedido: nuevo };
 
     detalleAbierto.originalText = nuevo;
     syncDetalleButtons();
@@ -907,19 +1045,21 @@ async function guardarDetallePedido() {
 }
 
 // ================================
-// 🖨 Imprimir pedido
+// 🖨 Imprimir pedido (JWT)
 // ================================
 async function imprimirPedido(id) {
   try {
     let config = {};
     try {
       config = JSON.parse(localStorage.getItem("configImpresora") || "{}");
-    } catch (e) {
+    } catch (_) {
       config = {};
     }
 
     if (!config.nombre) {
-      showModal("No hay una impresora configurada. Ve a 'Configurar impresora' en el menú.");
+      showModal(
+        "No hay una impresora configurada. Ve a 'Configurar impresora' en el menú."
+      );
       return;
     }
 
@@ -928,20 +1068,21 @@ async function imprimirPedido(id) {
 
     showLoader("Enviando pedido a la impresora...");
 
-    const res = await fetch("/api/pedidos/imprimir", {
+    const res = await apiFetch("/api/pedidos/imprimir", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ip, port }),
     });
 
     hideLoader();
 
-    let data = {};
-    try {
-      data = await res.json();
-    } catch (_) {
-      data = {};
+    if (res.status === 401) {
+      clearSession();
+      showModal("Sesión expirada. Inicia sesión de nuevo.");
+      setTimeout(() => (window.location.href = "/login.html"), 900);
+      return;
     }
+
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       console.error("Error al imprimir pedido:", data);
@@ -981,19 +1122,55 @@ function irHistorico() {
   window.location.href = "/historico.html";
 }
 
+function openTurnoModal() {
+  document.getElementById("modalTurno")?.classList.remove("hidden");
+}
+function cerrarModalTurno() {
+  document.getElementById("modalTurno")?.classList.add("hidden");
+}
+window.cerrarModalTurno = cerrarModalTurno;
+
+async function checkTurnoActivo() {
+  const r = await apiFetch("/api/shifts/active", { method: "GET" });
+  if (!r.ok) return null;
+  const data = await r.json().catch(() => ({}));
+  return data.shift || null;
+}
+
+async function iniciarTurno() {
+  const btn = document.getElementById("btnIniciarTurno");
+  if (btn) btn.disabled = true;
+
+  const r = await apiFetch("/api/shifts/start", { method: "POST" });
+  const data = await r.json().catch(() => ({}));
+
+  if (btn) btn.disabled = false;
+
+  if (!r.ok) {
+    showModal(data.error || "No se pudo iniciar turno");
+    return;
+  }
+
+  cerrarModalTurno();
+  showModal("Turno iniciado ✅");
+  cargarPedidos();
+}
+
+window.iniciarTurno = iniciarTurno;
+
 // ================================
 // 🔴 Cerrar sesión
 // ================================
 async function cerrarSesion() {
   try {
     showLoader("Cerrando sesión...");
-    localStorage.removeItem("usuario");
+    clearSession();
     hideLoader();
     showModal("Sesión cerrada correctamente.");
 
     setTimeout(() => {
       window.location.href = "/login.html";
-    }, 1200);
+    }, 800);
   } catch (err) {
     hideLoader();
     showModal("No se pudo cerrar la sesión.");

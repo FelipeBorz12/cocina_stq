@@ -2,65 +2,93 @@
 import { Router } from "express";
 import { supabase } from "../supabase";
 import { imprimirTextoEnIp } from "../printer";
+import { auth } from "../middlewares/auth";
 
 const router = Router();
 
+// ==========================
+// Config
+// ==========================
 const HISTORICO_DELAY_MS = 5 * 60 * 1000;
 
+// ==========================
+// Helpers
+// ==========================
 function nowIso() {
   return new Date().toISOString();
 }
 
 function mapEstadoToTimestampField(estado: string) {
   // tabla: recibido_at, en_preparacion_at, listo_at, en_camino_at, entregado_at
-  if (estado === "Recibido") return "recibido_at";
-  if (estado === "En preparación") return "en_preparacion_at";
-  if (estado === "Listo") return "listo_at";
-  if (estado === "En camino") return "en_camino_at";
-  if (estado === "Entregado") return "entregado_at";
-  return null;
+  switch (estado) {
+    case "Recibido":
+      return "recibido_at";
+    case "En preparación":
+      return "en_preparacion_at";
+    case "Listo":
+      return "listo_at";
+    case "En camino":
+      return "en_camino_at";
+    case "Entregado":
+      return "entregado_at";
+    default:
+      return null;
+  }
 }
+
+// Máquina de estados (evita saltos raros)
+const allowedTransitions: Record<string, string[]> = {
+  Recibido: ["En preparación"],
+  "En preparación": ["Listo"],
+  Listo: ["En camino", "Entregado"],
+  "En camino": ["Entregado"],
+  Entregado: [],
+};
+
+function canMove(from: string, to: string) {
+  return (allowedTransitions[from] || []).includes(to);
+}
+
+async function getPedidoBasico(id: number | string) {
+  // NOTA: evitamos maybeSingle() por compatibilidad
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("id, estado, puntoventa, resumen_pedido, listo_at")
+    .eq("id", id)
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+  return data?.[0] || null;
+}
+
+function assertPedidoDeTienda(pedido: any, storeId: string) {
+  if (!pedido) return { ok: false, status: 404, msg: "Pedido no encontrado" };
+  if (String(pedido.puntoventa) !== String(storeId)) {
+    return { ok: false, status: 403, msg: "No autorizado para este pedido" };
+  }
+  return { ok: true as const };
+}
+
+// ==========================
+// Routes
+// ==========================
 
 /*
  |------------------------------
  |  GET /api/pedidos
- |  Opcional: ?correo=user@example.com
- |  ✅ HOME: devuelve todos, pero excluye Listo >= 5 min
+ |  ✅ HOME: pedidos de la tienda del token
+ |     excluye Listo >= 5 min (se van al histórico)
  |------------------------------
 */
-router.get("/", async (req, res) => {
+router.get("/", auth(), async (req, res) => {
   try {
-    const { correo } = req.query as { correo?: string };
+    const storeId = req.user!.store_id;
 
-    let puntoVenta: string | null = null;
-
-    if (correo) {
-      const { data: usuario, error: errorUsuario } = await supabase
-        .from("usercocina")
-        .select("PuntoVenta")
-        .eq("correo", correo)
-        .maybeSingle();
-
-      if (errorUsuario) {
-        console.error("Error buscando usuario:", errorUsuario);
-        return res.status(500).json({ error: errorUsuario.message });
-      }
-
-      if (!usuario) {
-        return res.status(404).json({ error: "Usuario no encontrado" });
-      }
-
-      puntoVenta = (usuario as any).PuntoVenta ?? null;
-    }
-
-    let query = supabase.from("pedidos").select("*").order("id", { ascending: true });
-
-    // En pedidos la columna es: puntoventa
-    if (puntoVenta) {
-      query = query.eq("puntoventa", puntoVenta);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select("*")
+      .eq("puntoventa", storeId)
+      .order("id", { ascending: true });
 
     if (error) {
       console.error("Error cargando pedidos:", error);
@@ -69,58 +97,37 @@ router.get("/", async (req, res) => {
 
     const cutoff = Date.now() - HISTORICO_DELAY_MS;
 
-    // ✅ HOME: excluye Listo que ya pasaron 5 min
     const dashboard = (data || []).filter((p: any) => {
       if (p.estado !== "Listo") return true;
-      if (!p.listo_at) return true; // si no hay timestamp, que se quede en home
-      return new Date(p.listo_at).getTime() >= cutoff; // solo "Listo" recientes
+      if (!p.listo_at) return true;
+      return new Date(p.listo_at).getTime() >= cutoff;
     });
 
     return res.json(dashboard);
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error general cargando pedidos:", err);
-    return res.status(500).json({ error: "Error general cargando pedidos" });
+    return res.status(500).json({ error: err?.message || "Error general cargando pedidos" });
   }
 });
 
 /*
  |------------------------------
  |  GET /api/pedidos/historico
- |  ?correo=user@example.com
- |  ✅ HISTÓRICO: SOLO Listo >= 5 min
+ |  ✅ HISTÓRICO: SOLO Listo >= 5 min (de la tienda del token)
  |------------------------------
 */
-router.get("/historico", async (req, res) => {
+router.get("/historico", auth(), async (req, res) => {
   try {
-    const { correo } = req.query as { correo?: string };
-    if (!correo) return res.status(400).json({ error: "Falta correo" });
+    const storeId = req.user!.store_id;
 
-    // Obtener PuntoVenta del usuario
-    const { data: usuario, error: errorUsuario } = await supabase
-      .from("usercocina")
-      .select("PuntoVenta")
-      .eq("correo", correo)
-      .maybeSingle();
-
-    if (errorUsuario) {
-      console.error("Error buscando usuario (historico):", errorUsuario);
-      return res.status(500).json({ error: errorUsuario.message });
-    }
-    if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
-
-    const puntoVenta = (usuario as any).PuntoVenta ?? null;
-
-    // Trae solo Listo (lo más eficiente) y filtra por puntoventa
-    let q = supabase
+    const { data, error } = await supabase
       .from("pedidos")
       .select("*")
+      .eq("puntoventa", storeId)
       .eq("estado", "Listo")
       .order("listo_at", { ascending: false })
       .limit(500);
 
-    if (puntoVenta) q = q.eq("puntoventa", puntoVenta);
-
-    const { data, error } = await q;
     if (error) {
       console.error("Error cargando historico:", error);
       return res.status(500).json({ error: error.message });
@@ -128,16 +135,15 @@ router.get("/historico", async (req, res) => {
 
     const cutoff = Date.now() - HISTORICO_DELAY_MS;
 
-    // ✅ HISTÓRICO: Listo >= 5 min
     const historico = (data || []).filter((p: any) => {
       if (!p.listo_at) return false;
       return new Date(p.listo_at).getTime() < cutoff;
     });
 
     return res.json(historico);
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error general histórico:", err);
-    return res.status(500).json({ error: "Error general histórico" });
+    return res.status(500).json({ error: err?.message || "Error general histórico" });
   }
 });
 
@@ -145,10 +151,12 @@ router.get("/historico", async (req, res) => {
  |------------------------------
  |  PUT /api/pedidos/estado
  |  Body: { id, estado }
- |  ✅ actualiza estado y guarda timestamp real en la columna correspondiente
+ |  ✅ valida tienda del token
+ |  ✅ valida transición
+ |  ✅ guarda timestamp
  |------------------------------
 */
-router.put("/estado", async (req, res) => {
+router.put("/estado", auth(), async (req, res) => {
   try {
     const { id, estado } = req.body as { id?: number | string; estado?: string };
 
@@ -156,22 +164,31 @@ router.put("/estado", async (req, res) => {
       return res.status(400).json({ error: "Faltan datos: id y estado" });
     }
 
-    // Armamos patch con timestamp según el estado
+    const storeId = req.user!.store_id;
+
+    const pedido = await getPedidoBasico(id);
+    const check = assertPedidoDeTienda(pedido, storeId);
+    if (!check.ok) return res.status(check.status).json({ error: check.msg });
+
+    const estadoActual = String((pedido as any).estado || "");
+    if (!canMove(estadoActual, estado)) {
+      return res.status(400).json({ error: `Transición inválida: ${estadoActual} -> ${estado}` });
+    }
+
     const patch: any = { estado };
     const field = mapEstadoToTimestampField(estado);
     if (field) patch[field] = nowIso();
 
-    const { error } = await supabase.from("pedidos").update(patch).eq("id", id);
-
-    if (error) {
-      console.error("Error actualizando estado:", error);
-      return res.status(500).json({ error: error.message });
+    const { error: errUpd } = await supabase.from("pedidos").update(patch).eq("id", id);
+    if (errUpd) {
+      console.error("Error actualizando estado:", errUpd);
+      return res.status(500).json({ error: errUpd.message });
     }
 
     return res.json({ message: "Estado actualizado", patch });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error general actualizando estado:", err);
-    return res.status(500).json({ error: "Error general actualizando estado" });
+    return res.status(500).json({ error: err?.message || "Error general actualizando estado" });
   }
 });
 
@@ -179,23 +196,28 @@ router.put("/estado", async (req, res) => {
  |------------------------------
  |  PUT /api/pedidos/resumen
  |  Body: { id, resumen_pedido }
- |  ✅ guarda resumen_pedido (para el modal editable)
+ |  ✅ solo permite editar pedidos de su tienda
  |------------------------------
 */
-router.put("/resumen", async (req, res) => {
+router.put("/resumen", auth(), async (req, res) => {
   try {
     const { id, resumen_pedido } = req.body as { id?: number | string; resumen_pedido?: string };
-
     if (!id) return res.status(400).json({ error: "Falta id" });
 
-    const txt = (resumen_pedido ?? "").toString();
+    const storeId = req.user!.store_id;
+
+    const pedido = await getPedidoBasico(id);
+    const check = assertPedidoDeTienda(pedido, storeId);
+    if (!check.ok) return res.status(check.status).json({ error: check.msg });
+
+    const txt = String(resumen_pedido ?? "");
 
     const { data, error } = await supabase
       .from("pedidos")
       .update({ resumen_pedido: txt })
       .eq("id", id)
       .select("*")
-      .single();
+      .single(); // aquí sí vale porque update+select debe devolver uno
 
     if (error) {
       console.error("Error guardando resumen:", error);
@@ -203,9 +225,9 @@ router.put("/resumen", async (req, res) => {
     }
 
     return res.json({ ok: true, pedido: data });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error general guardando resumen:", err);
-    return res.status(500).json({ error: "Error general guardando resumen" });
+    return res.status(500).json({ error: err?.message || "Error general guardando resumen" });
   }
 });
 
@@ -213,47 +235,31 @@ router.put("/resumen", async (req, res) => {
  |------------------------------
  |  POST /api/pedidos/imprimir
  |  Body: { id, ip, port? }
+ |  ✅ valida tienda del token
+ |  ⚠️ Aceptar ip del cliente NO es seguro (SSRF)
  |------------------------------
 */
-router.post("/imprimir", async (req, res) => {
+router.post("/imprimir", auth(), async (req, res) => {
   try {
-    const { id, ip, port } = req.body as {
-      id?: number;
-      ip?: string;
-      port?: number;
-    };
+    const { id, ip, port } = req.body as { id?: number; ip?: string; port?: number };
 
     if (!id || !ip) {
-      return res
-        .status(400)
-        .json({ error: "Faltan datos: id del pedido e ip de la impresora" });
+      return res.status(400).json({ error: "Faltan datos: id e ip de la impresora" });
     }
 
-    const { data: pedido, error } = await supabase
-      .from("pedidos")
-      .select("resumen_pedido")
-      .eq("id", id)
-      .single();
+    const storeId = req.user!.store_id;
 
-    if (error) {
-      console.error("Error buscando pedido:", error);
-      return res.status(500).json({ error: error.message });
-    }
+    const pedido = await getPedidoBasico(id);
+    const check = assertPedidoDeTienda(pedido, storeId);
+    if (!check.ok) return res.status(check.status).json({ error: check.msg });
 
-    if (!pedido) {
-      return res.status(404).json({ error: "Pedido no encontrado" });
-    }
-
-    const texto = (pedido as any).resumen_pedido as string;
-
+    const texto = String((pedido as any).resumen_pedido ?? "");
     await imprimirTextoEnIp(ip, texto, port || 9100);
 
     return res.json({ message: "Ticket enviado a la impresora" });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error imprimiendo pedido:", err);
-    return res
-      .status(500)
-      .json({ error: "No se pudo imprimir el pedido en la impresora" });
+    return res.status(500).json({ error: err?.message || "No se pudo imprimir" });
   }
 });
 
