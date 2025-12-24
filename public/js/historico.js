@@ -153,18 +153,112 @@
     return out;
   }
 
+  // ================================
+  // 🔐 AUTH HELPERS (JWT + refresh) igual que home.js
+  // ================================
+  function getAccessToken() {
+    try {
+      return localStorage.getItem("access_token") || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function getRefreshToken() {
+    try {
+      return localStorage.getItem("refresh_token") || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function getUsuario() {
+    try {
+      return JSON.parse(localStorage.getItem("usuario") || "null");
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearSession() {
+    try {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("usuario");
+    } catch (_) {}
+  }
+
+  async function tryRefreshAccessToken() {
+    const refresh_token = getRefreshToken();
+    if (!refresh_token) return null;
+
+    const r = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token }),
+    });
+
+    if (!r.ok) return null;
+
+    const data = await r.json().catch(() => ({}));
+    if (!data.access_token) return null;
+
+    try {
+      localStorage.setItem("access_token", data.access_token);
+    } catch (_) {}
+
+    return data.access_token;
+  }
+
+  async function apiFetch(url, options = {}) {
+    const token = getAccessToken();
+
+    const headers = {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    };
+
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const resp1 = await fetch(url, { ...options, headers });
+
+    if (resp1.status !== 401) return resp1;
+
+    const newToken = await tryRefreshAccessToken();
+    if (!newToken) return resp1;
+
+    const headers2 = {
+      ...headers,
+      Authorization: `Bearer ${newToken}`,
+    };
+
+    return fetch(url, { ...options, headers: headers2 });
+  }
+
+  // ================================
+  // 🔵 DATA
+  // ================================
   let rawData = [];
 
   async function fetchHistorico() {
-    const usuarioLogin = JSON.parse(localStorage.getItem("usuario") || "null");
-    if (!usuarioLogin || !usuarioLogin.correo) {
+    // Validar sesión
+    const token = getAccessToken();
+    const usuarioLogin = getUsuario();
+    if (!token || !usuarioLogin) {
       alert("No se ha iniciado sesión.");
       window.location.href = "/login.html";
       return [];
     }
 
-    const url = `/api/pedidos/historico?correo=${encodeURIComponent(usuarioLogin.correo)}`;
-    const res = await fetch(url);
+    // ✅ NUEVO: sin correo, con JWT
+    const res = await apiFetch("/api/pedidos/historico", { method: "GET" });
+
+    if (res.status === 401) {
+      clearSession();
+      alert("Sesión expirada. Inicia sesión de nuevo.");
+      window.location.href = "/login.html";
+      return [];
+    }
 
     if (!res.ok) {
       console.error("Error histórico:", res.status);
@@ -172,10 +266,10 @@
       return [];
     }
 
-    let data = await res.json();
+    let data = await res.json().catch(() => []);
     if (!Array.isArray(data)) data = [];
 
-    // Seguridad extra: por si algo llega raro, solo lo que realmente sea histórico (Listo + 5min)
+    // Seguridad extra: Listo + 5 min
     const cutoff = Date.now() - HISTORICO_DELAY_MS;
     data = data.filter((p) => {
       if (safeText(p.estado) !== "Listo") return false;
@@ -217,6 +311,15 @@
   };
 
   document.addEventListener("DOMContentLoaded", () => {
+    // ✅ Validar sesión antes de cargar
+    const token = getAccessToken();
+    const u = getUsuario();
+    if (!token || !u) {
+      alert("No se ha iniciado sesión.");
+      window.location.href = "/login.html";
+      return;
+    }
+
     cargar();
 
     const ft = $("filtroTexto");
