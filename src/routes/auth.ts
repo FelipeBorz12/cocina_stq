@@ -3,6 +3,7 @@ import { supabase } from "../supabase";
 import bcrypt from "bcrypt";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { sha256 } from "../utils/crypto";
+import { auth } from "../middlewares/auth";
 
 const router = Router();
 
@@ -160,5 +161,30 @@ router.post("/refresh", async (req, res) => {
     return res.status(401).json({ error: "No se pudo refrescar" });
   }
 });
+
+router.get("/me", auth(), async (req, res) => {
+  try {
+    const userId = Number(req.user!.sub);
+
+    const { data, error } = await supabase
+      .from("usercocina")
+      .select('id, administrador, correo, "PuntoVenta"')
+      .eq("id", userId)
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    return res.json({
+      id: data.id,
+      administrador: data.administrador,
+      correo: data.correo,
+      PuntoVenta: data.PuntoVenta,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message || "Error en /auth/me" });
+  }
+});
+
 
 export default router;

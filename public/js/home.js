@@ -29,6 +29,15 @@ function showModal(msg) {
 function cerrarModal() {
   const modal = document.getElementById("modal");
   if (!modal) return;
+
+  // Restaurar botón "Aceptar" si se ocultó por el prompt de turno
+  const box = modal.querySelector(".modal-box");
+  if (box) {
+    const defaultBtn = box.querySelector("button[onclick='cerrarModal()']");
+    if (defaultBtn) defaultBtn.style.display = "";
+    box.querySelectorAll("button[data-shift='1']").forEach((b) => b.remove());
+  }
+
   modal.classList.add("hidden");
 }
 
@@ -409,39 +418,254 @@ function calcDuraciones(p) {
 }
 
 // ================================
-// 🔵 Cargar pedidos del backend (JWT)
+// 🕒 TURNO (Modal inicial + aviso cierre + extender 30 min)
 // ================================
-document.addEventListener("DOMContentLoaded", () => {
-  // Si no hay sesión, mandar a login
-  const token = getAccessToken();
+const SHIFT_WARN_KEY = "shift_warn_shown";
+
+async function openTurnoModal() {
+  // 1) Intentar prellenar con localStorage.usuario
   const u = getUsuario();
-  if (!token || !u) {
-    showModal("No se ha iniciado sesión.");
-    setTimeout(() => (window.location.href = "/login.html"), 800);
+  const adminInput = document.getElementById("turnoAdminName");
+  const sedeInput = document.getElementById("turnoSedeName");
+
+  const fillFromUser = (userObj) => {
+    if (!userObj) return;
+
+    const admin = (
+      userObj.administrador ||
+      userObj.nombre ||
+      userObj.Nombre ||
+      userObj.name ||
+      ""
+    )
+      .toString()
+      .trim();
+    const sede = (
+      userObj.PuntoVenta ||
+      userObj.puntoventa ||
+      userObj.puntoVenta ||
+      ""
+    )
+      .toString()
+      .trim();
+
+    if (adminInput && !adminInput.value) adminInput.value = admin;
+    if (sedeInput && !sedeInput.value) sedeInput.value = sede;
+  };
+
+  fillFromUser(u);
+
+  // 2) Si no están, pedir al backend /api/auth/me
+  const faltaAdmin = adminInput && !adminInput.value.trim();
+  const faltaSede = sedeInput && !sedeInput.value.trim();
+
+  if (faltaAdmin || faltaSede) {
+    try {
+      const r = await apiFetch("/api/auth/me", { method: "GET" });
+      if (r.ok) {
+        const me = await r.json().catch(() => null);
+        if (me) {
+          // guardar/actualizar en localStorage.usuario para futuras pantallas
+          try {
+            const prev = getUsuario() || {};
+            localStorage.setItem("usuario", JSON.stringify({ ...prev, ...me }));
+          } catch (_) {}
+
+          fillFromUser(me);
+        }
+      }
+    } catch (e) {
+      // no bloquea el modal, solo no prellena
+      console.warn("No se pudo prellenar desde /api/auth/me:", e);
+    }
+  }
+
+  // 3) Abrir modal (inputs quedan editables)
+  document.getElementById("modalTurno")?.classList.remove("hidden");
+}
+
+function cerrarModalTurno() {
+  document.getElementById("modalTurno")?.classList.add("hidden");
+}
+window.cerrarModalTurno = cerrarModalTurno;
+
+async function getTurnoActivoFull() {
+  const r = await apiFetch("/api/shifts/active", { method: "GET" });
+  if (!r.ok) return { shift: null, meta: null };
+  const data = await r.json().catch(() => ({}));
+  return { shift: data.shift || null, meta: data.meta || null };
+}
+
+async function checkTurnoActivo() {
+  const { shift } = await getTurnoActivoFull();
+  return shift || null;
+}
+
+async function iniciarTurno() {
+  const btn = document.getElementById("btnIniciarTurno");
+  if (btn) btn.disabled = true;
+
+  const admin_name = (
+    document.getElementById("turnoAdminName")?.value || ""
+  ).trim();
+  const sede_name = (
+    document.getElementById("turnoSedeName")?.value || ""
+  ).trim();
+
+  if (!admin_name || !sede_name) {
+    if (btn) btn.disabled = false;
+    showModal("Debes ingresar el nombre del administrador y la sede.");
     return;
   }
 
-  cargarPedidos();
-  setInterval(cargarPedidos, 10000);
-  setInterval(tickTimers, 1000);
+  try {
+    showLoader("Iniciando turno...");
 
-  // Modal detalle: cerrar al click fuera + ESC
-  setupModalDetalle();
-});
+    const r = await apiFetch("/api/shifts/start", {
+      method: "POST",
+      body: JSON.stringify({ admin_name, sede_name }),
+    });
 
-document.addEventListener("DOMContentLoaded", async () => {
-  const shift = await checkTurnoActivo();
+    const data = await r.json().catch(() => ({}));
+
+    hideLoader();
+    if (btn) btn.disabled = false;
+
+    if (!r.ok) {
+      showModal(data.error || "No se pudo iniciar turno");
+      return;
+    }
+
+    try {
+      localStorage.removeItem(SHIFT_WARN_KEY);
+    } catch (_) {}
+
+    cerrarModalTurno();
+    showModal("Turno iniciado ✅");
+
+    // arrancar loops de pedidos si aún no estaban
+    cargarPedidos();
+    setInterval(cargarPedidos, 10000);
+    setInterval(tickTimers, 1000);
+    setupModalDetalle();
+  } catch (e) {
+    hideLoader();
+    if (btn) btn.disabled = false;
+    console.error(e);
+    showModal("Error iniciando turno.");
+  }
+}
+window.iniciarTurno = iniciarTurno;
+
+async function extenderTurno30() {
+  try {
+    showLoader("Extendiendo turno 30 min...");
+
+    const r = await apiFetch("/api/shifts/extend", { method: "POST" });
+    const data = await r.json().catch(() => ({}));
+
+    hideLoader();
+
+    if (!r.ok) {
+      showModal(data.error || "No se pudo extender el turno.");
+      return false;
+    }
+
+    try {
+      localStorage.removeItem(SHIFT_WARN_KEY);
+    } catch (_) {}
+
+    showModal("Turno extendido 30 minutos ✅");
+    return true;
+  } catch (e) {
+    hideLoader();
+    console.error(e);
+    showModal("Error extendiendo el turno.");
+    return false;
+  }
+}
+
+function showExtendPrompt(minutesLeft) {
+  const modal = document.getElementById("modal");
+  const text = document.getElementById("modal-text");
+
+  // fallback
+  if (!modal || !text) {
+    const ok = confirm(
+      `El turno se cerrará en ${minutesLeft} min. ¿Extender 30 min?`
+    );
+    if (ok) extenderTurno30();
+    return;
+  }
+
+  text.textContent = `El turno se cerrará en ${minutesLeft} min. ¿Deseas extenderlo 30 min más?`;
+
+  const box = modal.querySelector(".modal-box");
+  if (!box) {
+    modal.classList.remove("hidden");
+    return;
+  }
+
+  const defaultBtn = box.querySelector("button[onclick='cerrarModal()']");
+  if (defaultBtn) defaultBtn.style.display = "none";
+
+  box.querySelectorAll("button[data-shift='1']").forEach((b) => b.remove());
+
+  const btnYes = document.createElement("button");
+  btnYes.textContent = "Sí, extender 30 min";
+  btnYes.setAttribute("data-shift", "1");
+  btnYes.className =
+    "bg-primary text-white px-5 py-2 rounded-lg font-bold w-full mt-2";
+  btnYes.onclick = async () => {
+    await extenderTurno30();
+    if (defaultBtn) defaultBtn.style.display = "";
+    cerrarModal();
+  };
+
+  const btnNo = document.createElement("button");
+  btnNo.textContent = "No, dejar que cierre";
+  btnNo.setAttribute("data-shift", "1");
+  btnNo.className =
+    "px-5 py-2 rounded-lg font-bold w-full mt-2 border border-slate-300 text-slate-700 bg-white";
+  btnNo.onclick = () => {
+    if (defaultBtn) defaultBtn.style.display = "";
+    cerrarModal();
+  };
+
+  box.appendChild(btnYes);
+  box.appendChild(btnNo);
+
+  modal.classList.remove("hidden");
+}
+
+async function turnoWatcher() {
+  const { shift, meta } = await getTurnoActivoFull();
+
   if (!shift) {
     openTurnoModal();
-    // no cargues pedidos hasta iniciar turno
     return;
   }
-  cargarPedidos();
-  setInterval(cargarPedidos, 10000);
-  setInterval(tickTimers, 1000);
-  setupModalDetalle();
-});
 
+  if (meta?.should_warn) {
+    let shown = false;
+    try {
+      shown = localStorage.getItem(SHIFT_WARN_KEY) === "1";
+    } catch (_) {
+      shown = false;
+    }
+    if (!shown) {
+      try {
+        localStorage.setItem(SHIFT_WARN_KEY, "1");
+      } catch (_) {}
+
+      showExtendPrompt(meta?.minutes_left ?? 10);
+    }
+  }
+}
+
+// ================================
+// 🔵 Cargar pedidos del backend (JWT)
+// ================================
 async function cargarPedidos() {
   try {
     if (primeraCarga) showLoader("Cargando pedidos...");
@@ -454,11 +678,8 @@ async function cargarPedidos() {
       return;
     }
 
-    // ✅ YA NO se usa correo / puntoVenta en frontend:
-    // el backend filtra por store_id del token.
     const resPedidos = await apiFetch("/api/pedidos", { method: "GET" });
 
-    // Si sigue 401 incluso tras refresh -> login
     if (resPedidos.status === 401) {
       hideLoader();
       clearSession();
@@ -493,13 +714,11 @@ async function cargarPedidos() {
       (p) => (p.estado || "") === "En preparación"
     );
 
-    // HOME: mostrar Listo SOLO si NO es histórico (Listo < 5 min)
     const listoPanel = pedidos.filter((p) => {
       if ((p.estado || "") !== "Listo") return false;
       return !esHistorico(p);
     });
 
-    // Aviso: “pasará a histórico”
     listoPanel.forEach(showHistoricoEn5MinModal);
 
     renderColumna("recibido", recibido);
@@ -577,7 +796,6 @@ async function cambiarEstado(id, estado) {
     const actual = pedidosCache.find((x) => String(x.id) === String(id));
     const estActual = actual?.estado || "";
 
-    // Regla: si ya está Listo, no permitir devolverse
     if (estActual === "Listo" && estado !== "Listo") {
       showModal(
         `No puedes cambiar el Pedido #${id} porque ya está en "Listo".`
@@ -608,7 +826,6 @@ async function cambiarEstado(id, estado) {
       return;
     }
 
-    // respaldo local (por si el fetch siguiente tarda)
     const mapField = {
       Recibido: "recibido_at",
       "En preparación": "en_preparacion_at",
@@ -900,7 +1117,7 @@ function checkDemoras() {
 }
 
 // ================================
-// 🧾 MODAL DETALLE (editable) - (tu código igual)
+// 🧾 MODAL DETALLE (editable)
 // ================================
 let detalleAbierto = null; // { id, originalText }
 
@@ -1094,7 +1311,7 @@ async function imprimirPedido(id) {
   } catch (err) {
     hideLoader();
     console.error("Error general imprimiendo pedido:", err);
-    showModal("Error inesperado al intentar imprimir el pedido.");
+    showModal("Error inesperado al intentar imprimir pedido.");
   }
 }
 
@@ -1122,49 +1339,34 @@ function irHistorico() {
   window.location.href = "/historico.html";
 }
 
-function openTurnoModal() {
-  document.getElementById("modalTurno")?.classList.remove("hidden");
-}
-function cerrarModalTurno() {
-  document.getElementById("modalTurno")?.classList.add("hidden");
-}
-window.cerrarModalTurno = cerrarModalTurno;
-
-async function checkTurnoActivo() {
-  const r = await apiFetch("/api/shifts/active", { method: "GET" });
-  if (!r.ok) return null;
-  const data = await r.json().catch(() => ({}));
-  return data.shift || null;
-}
-
-async function iniciarTurno() {
-  const btn = document.getElementById("btnIniciarTurno");
-  if (btn) btn.disabled = true;
-
-  const r = await apiFetch("/api/shifts/start", { method: "POST" });
-  const data = await r.json().catch(() => ({}));
-
-  if (btn) btn.disabled = false;
-
-  if (!r.ok) {
-    showModal(data.error || "No se pudo iniciar turno");
-    return;
-  }
-
-  cerrarModalTurno();
-  showModal("Turno iniciado ✅");
-  cargarPedidos();
-}
-
-window.iniciarTurno = iniciarTurno;
-
 // ================================
 // 🔴 Cerrar sesión
+// ================================
+// ================================
+// 🔴 Cerrar sesión (cerrar turno también)
 // ================================
 async function cerrarSesion() {
   try {
     showLoader("Cerrando sesión...");
+
+    // 1) Intentar cerrar turno si hay uno activo (no bloquea logout si falla)
+    try {
+      // opcional: solo intentarlo si hay turno
+      const rActive = await apiFetch("/api/shifts/active", { method: "GET" });
+      if (rActive.ok) {
+        const data = await rActive.json().catch(() => ({}));
+        if (data.shift) {
+          await apiFetch("/api/shifts/end", { method: "POST" });
+        }
+      }
+    } catch (e) {
+      console.warn("No se pudo cerrar turno al cerrar sesión:", e);
+      // no detenemos el logout
+    }
+
+    // 2) Ahora sí borrar sesión local
     clearSession();
+
     hideLoader();
     showModal("Sesión cerrada correctamente.");
 
@@ -1177,3 +1379,42 @@ async function cerrarSesion() {
     console.error("Error cerrando sesión:", err);
   }
 }
+
+// ================================
+// ✅ INIT ÚNICO (sin duplicar listeners)
+// ================================
+document.addEventListener("DOMContentLoaded", async () => {
+  const token = getAccessToken();
+  const u = getUsuario();
+  if (!token || !u) {
+    showModal("No se ha iniciado sesión.");
+    setTimeout(() => (window.location.href = "/login.html"), 800);
+    return;
+  }
+
+  // Primero: validar turno
+  const shift = await checkTurnoActivo();
+  if (!shift) {
+    openTurnoModal();
+  } else {
+    cargarPedidos();
+    setInterval(cargarPedidos, 10000);
+    setInterval(tickTimers, 1000);
+    setupModalDetalle();
+  }
+
+  // Watcher turno (aviso y auto cierre desde /active)
+  setInterval(turnoWatcher, 60000);
+});
+
+window.addEventListener("beforeunload", () => {
+  try {
+    const token = getAccessToken();
+    if (!token) return;
+
+    // sendBeacon no permite headers custom, así que no sirve si tu endpoint exige auth.
+    // Lo dejamos como comentario. Si algún día haces un endpoint sin auth para beacon,
+    // aquí lo podrías activar.
+  } catch (_) {}
+});
+
