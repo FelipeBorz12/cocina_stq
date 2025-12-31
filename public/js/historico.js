@@ -1,8 +1,13 @@
 (function () {
-  const HISTORICO_DELAY_MS = 5 * 60 * 1000;
+  console.log("[Historico] historico.js cargado ✅");
 
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function setStatus(msg) {
+    const el = $("statusHistorico");
+    if (el) el.textContent = msg || "—";
   }
 
   function showLoader(on) {
@@ -33,7 +38,16 @@
   function formatDateTime(v) {
     const d = parseDate(v);
     if (!d) return "—";
-    return d.toLocaleString();
+    return d.toLocaleString("es-CO", {
+      timeZone: "America/Bogota",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
   }
 
   function formatDuration(ms) {
@@ -72,9 +86,45 @@
 
     const inicioTotal = recibido || created;
     const finTotal = entregado || now;
-    const tTotal = inicioTotal ? finTotal.getTime() - inicioTotal.getTime() : null;
+    const tTotal = inicioTotal
+      ? finTotal.getTime() - inicioTotal.getTime()
+      : null;
 
     return { tRec, tPrep, tListo, tCamino, tTotal };
+  }
+
+  function estadoBadgeHtml(estadoRaw) {
+    const estado = safeText(estadoRaw).trim();
+    let cls = "bg-slate-100 text-slate-800 dark:bg-white/10 dark:text-slate-100";
+
+    if (estado === "Recibido")
+      cls = "bg-yellow-100 text-yellow-900 dark:bg-yellow-500/20 dark:text-yellow-200";
+    if (estado === "En preparación")
+      cls = "bg-orange-100 text-orange-900 dark:bg-orange-500/20 dark:text-orange-200";
+    if (estado === "Listo")
+      cls = "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200";
+    if (estado === "En camino")
+      cls = "bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-200";
+    if (estado === "Entregado")
+      cls = "bg-indigo-100 text-indigo-900 dark:bg-indigo-500/20 dark:text-indigo-200";
+
+    return `<span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-extrabold ${cls}">${escapeHtml(
+      estado || "—"
+    )}</span>`;
+  }
+
+  function renderErrorRow(msg) {
+    const tbody = $("tablaHistorico");
+    if (!tbody) return;
+    tbody.innerHTML = `
+      <tr>
+        <td class="px-4 py-6 text-sm text-red-600 dark:text-red-300" colspan="11">
+          ${escapeHtml(msg)}
+        </td>
+      </tr>
+    `;
+    const c = $("countHistorico");
+    if (c) c.textContent = "0";
   }
 
   function renderTabla(data) {
@@ -82,33 +132,38 @@
     if (!tbody) return;
 
     tbody.innerHTML = "";
+
     const c = $("countHistorico");
     if (c) c.textContent = String(data.length);
 
     if (data.length === 0) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td class="px-4 py-6 text-sm text-slate-500 dark:text-slate-400" colspan="11">
-          No hay pedidos en histórico todavía (solo aparecen cuando están "Listo" y pasan 5 min).
-        </td>
+      tbody.innerHTML = `
+        <tr>
+          <td class="px-4 py-6 text-sm text-slate-500 dark:text-slate-400" colspan="11">
+            No hay pedidos con los filtros actuales (o el endpoint devuelve vacío).
+          </td>
+        </tr>
       `;
-      tbody.appendChild(tr);
       return;
     }
 
-    data.forEach((p) => {
+    data.forEach((p, idx) => {
       const d = calcDurations(p);
 
       const tr = document.createElement("tr");
-      tr.className = "text-slate-800 dark:text-slate-100";
+      tr.className =
+        "text-slate-800 dark:text-slate-100 hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors";
+      if (idx % 2 === 1) tr.classList.add("bg-white/40", "dark:bg-black/10");
 
       tr.innerHTML = `
         <td class="px-4 py-3 font-extrabold">#${escapeHtml(p.id)}</td>
         <td class="px-4 py-3">${escapeHtml(p.nombre_cliente)}</td>
         <td class="px-4 py-3">${escapeHtml(p.celular_cliente)}</td>
         <td class="px-4 py-3">${escapeHtml(p.direccion_cliente)}</td>
-        <td class="px-4 py-3 font-bold">${escapeHtml(p.estado)}</td>
-        <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">${formatDateTime(p.created_at)}</td>
+        <td class="px-4 py-3">${estadoBadgeHtml(p.estado)}</td>
+        <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">${formatDateTime(
+          p.created_at
+        )}</td>
         <td class="px-4 py-3">${formatDuration(d.tRec)}</td>
         <td class="px-4 py-3">${formatDuration(d.tPrep)}</td>
         <td class="px-4 py-3">${formatDuration(d.tListo)}</td>
@@ -122,13 +177,15 @@
 
   function applyClientFilters(list) {
     const txt = safeText($("filtroTexto")?.value).trim().toLowerCase();
+    const estadoSel = safeText($("filtroEstado")?.value).trim();
     const desde = $("filtroDesde")?.value || "";
     const hasta = $("filtroHasta")?.value || "";
 
     let out = list.slice();
 
-    // Estado fijo: Listo
-    out = out.filter((p) => safeText(p.estado) === "Listo");
+    if (estadoSel) {
+      out = out.filter((p) => safeText(p.estado).trim() === estadoSel);
+    }
 
     if (desde) {
       const min = new Date(desde + "T00:00:00").getTime();
@@ -146,7 +203,12 @@
         const nombre = safeText(p.nombre_cliente).toLowerCase();
         const cel = safeText(p.celular_cliente).toLowerCase();
         const dir = safeText(p.direccion_cliente).toLowerCase();
-        return id.includes(txt) || nombre.includes(txt) || cel.includes(txt) || dir.includes(txt);
+        return (
+          id.includes(txt) ||
+          nombre.includes(txt) ||
+          cel.includes(txt) ||
+          dir.includes(txt)
+        );
       });
     }
 
@@ -154,7 +216,7 @@
   }
 
   // ================================
-  // 🔐 AUTH HELPERS (JWT + refresh) igual que home.js
+  // AUTH
   // ================================
   function getAccessToken() {
     try {
@@ -227,64 +289,69 @@
     const newToken = await tryRefreshAccessToken();
     if (!newToken) return resp1;
 
-    const headers2 = {
-      ...headers,
-      Authorization: `Bearer ${newToken}`,
-    };
-
+    const headers2 = { ...headers, Authorization: `Bearer ${newToken}` };
     return fetch(url, { ...options, headers: headers2 });
   }
 
   // ================================
-  // 🔵 DATA
+  // DATA
   // ================================
   let rawData = [];
 
   async function fetchHistorico() {
-    // Validar sesión
+    // sesión mínima
     const token = getAccessToken();
-    const usuarioLogin = getUsuario();
-    if (!token || !usuarioLogin) {
-      alert("No se ha iniciado sesión.");
-      window.location.href = "/login.html";
+    const u = getUsuario();
+
+    if (!token || !u) {
+      setStatus("Sin sesión (no hay token/usuario).");
+      renderErrorRow("No se ha iniciado sesión. Debes iniciar sesión primero.");
       return [];
     }
 
-    // ✅ NUEVO: sin correo, con JWT
+    setStatus("Consultando /api/pedidos/historico ...");
+
     const res = await apiFetch("/api/pedidos/historico", { method: "GET" });
 
     if (res.status === 401) {
       clearSession();
-      alert("Sesión expirada. Inicia sesión de nuevo.");
-      window.location.href = "/login.html";
+      setStatus("401: sesión expirada.");
+      renderErrorRow("401: Sesión expirada. Inicia sesión de nuevo.");
+      setTimeout(() => (window.location.href = "/login.html"), 800);
       return [];
     }
 
+    const textBody = await res.text().catch(() => "");
     if (!res.ok) {
-      console.error("Error histórico:", res.status);
-      alert("No se pudo cargar el histórico.");
+      console.error("[Historico] HTTP", res.status, textBody);
+      setStatus(`Error HTTP ${res.status}`);
+      renderErrorRow(`Error cargando histórico. HTTP ${res.status}. Respuesta: ${textBody || "(vacía)"}`);
       return [];
     }
 
-    let data = await res.json().catch(() => []);
-    if (!Array.isArray(data)) data = [];
+    let data;
+    try {
+      data = JSON.parse(textBody || "null");
+    } catch (e) {
+      console.error("[Historico] JSON inválido:", textBody);
+      setStatus("Respuesta inválida (no JSON).");
+      renderErrorRow("El servidor devolvió una respuesta no-JSON.");
+      return [];
+    }
 
-    // Seguridad extra: Listo + 5 min
-    const cutoff = Date.now() - HISTORICO_DELAY_MS;
-    data = data.filter((p) => {
-      if (safeText(p.estado) !== "Listo") return false;
-      const t = parseDate(p.listo_at);
-      if (!t) return false;
-      return t.getTime() < cutoff;
-    });
+    // ✅ Normalizar: a veces backend responde { data: [...] } o { pedidos: [...] }
+    if (Array.isArray(data)) {
+      // ok
+    } else if (Array.isArray(data?.data)) {
+      data = data.data;
+    } else if (Array.isArray(data?.pedidos)) {
+      data = data.pedidos;
+    } else {
+      console.warn("[Historico] No vino array:", data);
+      data = [];
+    }
 
-    // Orden más reciente primero (por listo_at)
-    data.sort(
-      (a, b) =>
-        (parseDate(b.listo_at)?.getTime() || 0) -
-        (parseDate(a.listo_at)?.getTime() || 0)
-    );
-
+    setStatus(`OK: ${data.length} registros recibidos.`);
     return data.slice(0, 500);
   }
 
@@ -295,38 +362,34 @@
     renderTabla(applyClientFilters(rawData));
   }
 
-  window.aplicarFiltros = function () {
+  function aplicarFiltros() {
     renderTabla(applyClientFilters(rawData));
-  };
+  }
 
-  window.limpiarFiltros = function () {
+  function limpiarFiltros() {
     if ($("filtroTexto")) $("filtroTexto").value = "";
+    if ($("filtroEstado")) $("filtroEstado").value = "";
     if ($("filtroDesde")) $("filtroDesde").value = "";
     if ($("filtroHasta")) $("filtroHasta").value = "";
     renderTabla(applyClientFilters(rawData));
-  };
+  }
 
-  window.refrescarHistorico = function () {
-    cargar();
-  };
+  document.addEventListener("DOMContentLoaded", async () => {
+    const btnAplicar = $("btnAplicar");
+    const btnLimpiar = $("btnLimpiar");
+    const btnRefrescar = $("btnRefrescar");
 
-  document.addEventListener("DOMContentLoaded", () => {
-    // ✅ Validar sesión antes de cargar
-    const token = getAccessToken();
-    const u = getUsuario();
-    if (!token || !u) {
-      alert("No se ha iniciado sesión.");
-      window.location.href = "/login.html";
-      return;
-    }
+    if (btnAplicar) btnAplicar.addEventListener("click", aplicarFiltros);
+    if (btnLimpiar) btnLimpiar.addEventListener("click", limpiarFiltros);
+    if (btnRefrescar) btnRefrescar.addEventListener("click", cargar);
 
-    cargar();
+    // filtros en vivo
+    const run = () => renderTabla(applyClientFilters(rawData));
+    $("filtroTexto")?.addEventListener("input", run);
+    $("filtroEstado")?.addEventListener("change", run);
+    $("filtroDesde")?.addEventListener("change", run);
+    $("filtroHasta")?.addEventListener("change", run);
 
-    const ft = $("filtroTexto");
-    if (ft) {
-      ft.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") renderTabla(applyClientFilters(rawData));
-      });
-    }
+    await cargar();
   });
 })();

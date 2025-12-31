@@ -1,197 +1,205 @@
-    <!DOCTYPE html>
-    <html class="dark" lang="es">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Histórico de Pedidos | Cocina</title>
+<!DOCTYPE html>
+<html class="dark" lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Histórico de Pedidos | Cocina</title>
 
-        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- ✅ Config tailwind en archivo externo (CSP-friendly) -->
+    <script src="/js/tailwind-config.js"></script>
 
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap"
-        rel="stylesheet"
-        />
-        <link
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
-        rel="stylesheet"
-        />
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 
-        <script>
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-            extend: {
-                colors: {
-                primary: "#ec1313",
-                "background-light": "#f8f6f6",
-                "background-dark": "#181111",
-                },
-                fontFamily: {
-                display: ["Plus Jakarta Sans", "Noto Sans", "sans-serif"],
-                },
-                borderRadius: { xl: "0.75rem" },
-            },
-            },
-        };
-        </script>
-    </head>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="stylesheet"
+    />
 
-    <body class="font-display bg-background-light dark:bg-background-dark">
-        <header
-        class="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-black/5 dark:border-white/10 bg-background-light/90 dark:bg-background-dark/90 px-4 backdrop-blur-md"
+    <style>
+      /* ✅ Inputs nativos (date) bien en dark */
+      html.dark {
+        color-scheme: dark;
+      }
+      html.dark input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        opacity: 0.85;
+      }
+      html.dark input::placeholder {
+        color: rgba(148, 163, 184, 0.9);
+      }
+    </style>
+  </head>
+
+  <body class="font-display bg-background-light dark:bg-background-dark">
+    <header
+      class="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-black/5 dark:border-white/10 bg-background-light/90 dark:bg-background-dark/90 px-4 backdrop-blur-md"
+    >
+      <div class="flex items-center gap-2">
+        <!-- ✅ SIN onclick: link normal -->
+        <a
+          href="/home.html"
+          class="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 dark:bg-black/30 shadow-sm text-slate-900 dark:text-white"
+          title="Volver"
         >
-        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-2xl">arrow_back</span>
+        </a>
+
+        <div class="flex flex-col">
+          <span
+            class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400"
+          >
+            Panel de cocina
+          </span>
+          <span
+            id="tituloHistorico"
+            class="text-sm font-extrabold text-slate-900 dark:text-white"
+          >
+            Histórico de pedidos
+          </span>
+        </div>
+      </div>
+
+      <button
+        id="btnRefrescar"
+        type="button"
+        class="px-4 py-2 rounded-xl text-sm font-extrabold bg-primary text-white shadow-sm"
+      >
+        Refrescar
+      </button>
+    </header>
+
+    <main class="p-4 space-y-4">
+      <!-- Filtros -->
+      <section
+        class="rounded-2xl bg-white/95 dark:bg-zinc-900/95 shadow-sm border border-black/5 dark:border-white/10 p-4"
+      >
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
+          <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
+            Buscar (id / nombre / celular / dirección)
+            <input
+              id="filtroTexto"
+              type="text"
+              class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Ej: 1024, Juan, 300..."
+            />
+          </label>
+
+          <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
+            Estado
+            <select
+              id="filtroEstado"
+              class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Todos</option>
+              <option value="Recibido">Recibido</option>
+              <option value="En preparación">En preparación</option>
+              <option value="Listo">Listo</option>
+              <option value="En camino">En camino</option>
+              <option value="Entregado">Entregado</option>
+            </select>
+          </label>
+
+          <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
+            Desde (creado)
+            <input
+              id="filtroDesde"
+              type="date"
+              class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </label>
+
+          <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
+            Hasta (creado)
+            <input
+              id="filtroHasta"
+              type="date"
+              class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </label>
+
+          <div class="flex items-end gap-2">
             <button
-            class="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 dark:bg-black/30 shadow-sm text-slate-900 dark:text-white"
-            onclick="window.location.href='/home.html'"
-            title="Volver"
+              id="btnAplicar"
+              type="button"
+              class="w-full px-4 py-2 rounded-xl text-sm font-extrabold bg-primary text-white shadow-sm"
             >
-            <span class="material-symbols-outlined text-2xl">arrow_back</span>
+              Aplicar
             </button>
-
-            <div class="flex flex-col">
-            <span
-                class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400"
+            <button
+              id="btnLimpiar"
+              type="button"
+              class="w-full px-4 py-2 rounded-xl text-sm font-extrabold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white/70 dark:bg-black/20"
             >
-                Panel de cocina
-            </span>
-            <span
-                id="tituloHistorico"
-                class="text-sm font-extrabold text-slate-900 dark:text-white"
-            >
-                Histórico de pedidos (Listo)
-            </span>
-            </div>
+              Limpiar
+            </button>
+          </div>
         </div>
+      </section>
 
-        <button
-            class="px-4 py-2 rounded-xl text-sm font-extrabold bg-primary text-white shadow-sm"
-            onclick="refrescarHistorico()"
-        >
-            Refrescar
-        </button>
-        </header>
-
-        <main class="p-4 space-y-4">
-        <section
-            class="rounded-2xl bg-white/95 dark:bg-zinc-900/95 shadow-sm border border-black/5 dark:border-white/10 p-4"
-        >
-            <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
-            <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
-                Buscar (id / nombre / celular / dirección)
-                <input
-                id="filtroTexto"
-                type="text"
-                class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
-                placeholder="Ej: 1024, Juan, 300..."
-                />
-            </label>
-
-            <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
-                Estado
-                <select
-                id="filtroEstado"
-                class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
-                disabled
-                title="El histórico muestra solo pedidos en estado Listo"
-                >
-                <option selected>Listo</option>
-                </select>
-            </label>
-
-            <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
-                Desde
-                <input
-                id="filtroDesde"
-                type="date"
-                class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
-                />
-            </label>
-
-            <label class="text-sm font-bold text-slate-700 dark:text-slate-200">
-                Hasta
-                <input
-                id="filtroHasta"
-                type="date"
-                class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
-                />
-            </label>
-
-            <div class="flex items-end gap-2">
-                <button
-                class="w-full px-4 py-2 rounded-xl text-sm font-extrabold bg-primary text-white shadow-sm"
-                onclick="aplicarFiltros()"
-                >
-                Aplicar
-                </button>
-                <button
-                class="w-full px-4 py-2 rounded-xl text-sm font-extrabold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                onclick="limpiarFiltros()"
-                >
-                Limpiar
-                </button>
-            </div>
-            </div>
-        </section>
-
-        <section
-            class="rounded-2xl bg-white/95 dark:bg-zinc-900/95 shadow-sm border border-black/5 dark:border-white/10 overflow-hidden"
-        >
-            <div
-            class="p-4 flex items-center justify-between gap-3 border-b border-black/5 dark:border-white/10"
-            >
-            <p class="text-sm font-extrabold text-slate-900 dark:text-white">
-                Resultados: <span id="countHistorico">0</span>
-            </p>
-            <p class="text-xs text-slate-500 dark:text-slate-400">
-                Se muestran solo pedidos “Listo” que ya pasaron al histórico (Listo
-                + 5 min). Si faltan timestamps, verás “—”.
-            </p>
-            </div>
-
-            <div class="overflow-x-auto">
-            <table class="min-w-full text-sm">
-                <thead
-                class="bg-slate-50 dark:bg-black/20 text-slate-700 dark:text-slate-200"
-                >
-                <tr>
-                    <th class="text-left px-4 py-3 font-extrabold">ID</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Cliente</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Celular</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Dirección</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Estado</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Creado</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Recibido</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Preparación</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Listo</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Camino</th>
-                    <th class="text-left px-4 py-3 font-extrabold">Total</th>
-                </tr>
-                </thead>
-                <tbody
-                id="tablaHistorico"
-                class="divide-y divide-slate-200 dark:divide-white/10"
-                ></tbody>
-            </table>
-            </div>
-        </section>
-        </main>
-
+      <!-- Tabla -->
+      <section
+        class="rounded-2xl bg-white/95 dark:bg-zinc-900/95 shadow-sm border border-black/5 dark:border-white/10 overflow-hidden"
+      >
         <div
-        id="loaderHistorico"
-        class="hidden fixed inset-0 bg-black/55 backdrop-blur-sm z-[9999] flex items-center justify-center"
+          class="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-black/5 dark:border-white/10"
         >
-        <div
-            class="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-2xl border border-black/5 dark:border-white/10"
-        >
-            <p class="text-slate-900 dark:text-white font-extrabold">
-            Cargando histórico...
-            </p>
-        </div>
+          <p class="text-sm font-extrabold text-slate-900 dark:text-white">
+            Resultados: <span id="countHistorico">0</span>
+          </p>
+          <p id="statusHistorico" class="text-xs text-slate-500 dark:text-slate-400">
+            —
+          </p>
         </div>
 
-        <script src="./js/historico.js"></script>
-    </body>
-    </html>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead
+              class="bg-slate-50 dark:bg-black/20 text-slate-700 dark:text-slate-200"
+            >
+              <tr>
+                <th class="text-left px-4 py-3 font-extrabold">ID</th>
+                <th class="text-left px-4 py-3 font-extrabold">Cliente</th>
+                <th class="text-left px-4 py-3 font-extrabold">Celular</th>
+                <th class="text-left px-4 py-3 font-extrabold">Dirección</th>
+                <th class="text-left px-4 py-3 font-extrabold">Estado</th>
+                <th class="text-left px-4 py-3 font-extrabold">Creado</th>
+                <th class="text-left px-4 py-3 font-extrabold">Recibido</th>
+                <th class="text-left px-4 py-3 font-extrabold">Preparación</th>
+                <th class="text-left px-4 py-3 font-extrabold">Listo</th>
+                <th class="text-left px-4 py-3 font-extrabold">Camino</th>
+                <th class="text-left px-4 py-3 font-extrabold">Total</th>
+              </tr>
+            </thead>
+            <tbody
+              id="tablaHistorico"
+              class="divide-y divide-slate-200 dark:divide-white/10"
+            ></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div
+      id="loaderHistorico"
+      class="hidden fixed inset-0 bg-black/55 backdrop-blur-sm z-[9999] flex items-center justify-center"
+    >
+      <div
+        class="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-2xl border border-black/5 dark:border-white/10"
+      >
+        <p class="text-slate-900 dark:text-white font-extrabold">
+          Cargando histórico...
+        </p>
+      </div>
+    </div>
+
+    <!-- ✅ JS -->
+    <script src="/js/historico.js"></script>
+  </body>
+</html>

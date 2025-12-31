@@ -422,6 +422,56 @@ function calcDuraciones(p) {
 // ================================
 const SHIFT_WARN_KEY = "shift_warn_shown";
 
+// ✅ reloj del modal turno
+let turnoClockTimer = null;
+
+function formatFechaHoraCO(d = new Date()) {
+  try {
+    return d.toLocaleString("es-CO", {
+      timeZone: "America/Bogota",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  } catch (_) {
+    // fallback si el browser no soporta timeZone
+    return d.toLocaleString("es-CO", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+}
+
+function startTurnoClock() {
+  const el = document.getElementById("turnoFechaHora");
+  if (!el) return;
+
+  const tick = () => {
+    el.textContent = formatFechaHoraCO(new Date());
+  };
+
+  tick();
+
+  if (turnoClockTimer) clearInterval(turnoClockTimer);
+  turnoClockTimer = setInterval(tick, 1000);
+}
+
+function stopTurnoClock() {
+  if (turnoClockTimer) {
+    clearInterval(turnoClockTimer);
+    turnoClockTimer = null;
+  }
+}
+
 async function openTurnoModal() {
   // 1) Intentar prellenar con localStorage.usuario
   const u = getUsuario();
@@ -440,6 +490,7 @@ async function openTurnoModal() {
     )
       .toString()
       .trim();
+
     const sede = (
       userObj.PuntoVenta ||
       userObj.puntoventa ||
@@ -449,8 +500,11 @@ async function openTurnoModal() {
       .toString()
       .trim();
 
+    // ✅ admin es editable: solo prellenar si está vacío
     if (adminInput && !adminInput.value) adminInput.value = admin;
-    if (sedeInput && !sedeInput.value) sedeInput.value = sede;
+
+    // ✅ sede NO es editable: SIEMPRE setear desde el usuario si viene
+    if (sedeInput && sede) sedeInput.value = sede;
   };
 
   fillFromUser(u);
@@ -480,12 +534,14 @@ async function openTurnoModal() {
     }
   }
 
-  // 3) Abrir modal (inputs quedan editables)
+  // 3) Abrir modal + reloj
   document.getElementById("modalTurno")?.classList.remove("hidden");
+  startTurnoClock();
 }
 
 function cerrarModalTurno() {
   document.getElementById("modalTurno")?.classList.add("hidden");
+  stopTurnoClock();
 }
 window.cerrarModalTurno = cerrarModalTurno;
 
@@ -512,9 +568,17 @@ async function iniciarTurno() {
     document.getElementById("turnoSedeName")?.value || ""
   ).trim();
 
-  if (!admin_name || !sede_name) {
+  if (!admin_name) {
     if (btn) btn.disabled = false;
-    showModal("Debes ingresar el nombre del administrador y la sede.");
+    showModal("Debes ingresar el nombre del administrador.");
+    return;
+  }
+
+  if (!sede_name) {
+    if (btn) btn.disabled = false;
+    showModal(
+      "No se pudo detectar la sede del usuario. Cierra sesión y vuelve a iniciar."
+    );
     return;
   }
 
@@ -1340,9 +1404,6 @@ function irHistorico() {
 }
 
 // ================================
-// 🔴 Cerrar sesión
-// ================================
-// ================================
 // 🔴 Cerrar sesión (cerrar turno también)
 // ================================
 async function cerrarSesion() {
@@ -1417,4 +1478,3 @@ window.addEventListener("beforeunload", () => {
     // aquí lo podrías activar.
   } catch (_) {}
 });
-

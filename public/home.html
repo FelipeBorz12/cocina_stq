@@ -807,19 +807,35 @@
         class="bg-white dark:bg-slate-800 rounded-2xl p-5 w-[92%] max-w-md shadow-xl"
         onclick="event.stopPropagation()"
       >
-        <h2 class="text-lg font-extrabold mb-2 text-slate-900 dark:text-white">
-          Iniciar turno
-        </h2>
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h2
+              class="text-lg font-extrabold mb-1 text-slate-900 dark:text-white"
+            >
+              Iniciar turno
+            </h2>
 
-        <p
-          id="turnoInfo"
-          class="text-sm text-slate-600 dark:text-slate-300 mb-4"
-        >
-          Para ver pedidos debes iniciar el turno. Registra el administrador y
-          la sede.
-        </p>
+            <p
+              id="turnoInfo"
+              class="text-sm text-slate-600 dark:text-slate-300"
+            >
+              Para ver pedidos debes iniciar el turno. Registra el administrador.
+              La sede se toma de tu usuario.
+            </p>
+          </div>
 
-        <div class="space-y-3 text-left">
+          <div
+            class="shrink-0 rounded-xl bg-slate-100 dark:bg-black/20 border border-black/5 dark:border-white/10 px-3 py-2 text-[11px] text-slate-700 dark:text-slate-200"
+            title="Fecha y hora"
+          >
+            <div class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px]">schedule</span>
+              <span id="turnoFechaHora" class="font-extrabold">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 space-y-3 text-left">
           <label
             class="block text-sm font-bold text-slate-700 dark:text-slate-200"
           >
@@ -835,18 +851,18 @@
           <label
             class="block text-sm font-bold text-slate-700 dark:text-slate-200"
           >
-            Sede / Local
+            Sede / Local (no editable)
             <input
               id="turnoSedeName"
               type="text"
-              class="mt-1 block w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              readonly
+              class="mt-1 block w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900/60 px-3 py-2 text-sm text-slate-800 dark:text-white cursor-not-allowed select-none"
               placeholder="Ej: Sede Centro"
             />
           </label>
         </div>
 
         <div class="flex gap-2 justify-end mt-5">
-          <!-- Si quieres forzar que NO se pueda cancelar, elimina este botón -->
           <button
             onclick="cerrarModalTurno()"
             class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold"
