@@ -7,15 +7,8 @@ import net from "net";
 
 import authRoutes from "./routes/auth";
 import pedidosRoutes from "./routes/pedidos";
-
-// Si usas un index agrupado, mantenlo.
-// Si no lo necesitas, puedes borrarlo.
 import apiRoutes from "./index";
-
 import shiftsRoutes from "./routes/shifts";
-
-
-
 
 const app = express();
 
@@ -23,10 +16,38 @@ const app = express();
 // Middlewares
 // ================================
 app.use(cors()); // luego lo podemos cerrar por dominio/origen
+
+// Logger simple para detectar el endpoint exacto cuando haya 4xx/5xx
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - start;
+    if (res.statusCode >= 400) {
+      console.warn(`[${res.statusCode}] ${req.method} ${req.originalUrl} (${ms}ms)`);
+    }
+  });
+  next();
+});
+
 app.use(express.json());
 
+// Si llega JSON inválido, Express puede botar 400 sin claridad.
+// Esto lo hace explícito:
+app.use((err: any, req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && err?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "JSON inválido (revisa el body del request)" });
+  }
+  return next(err);
+});
 
 app.use("/api/shifts", shiftsRoutes);
+
+// ================================
+// Fix: favicon
+// ================================
+// Evita el 404 en consola si no tienes favicon.ico en /public
+app.get("/favicon.ico", (req, res) => res.status(204).end());
+
 // ================================
 // Static (public)
 // ================================
@@ -46,7 +67,6 @@ app.get("/impresoras", (req, res) => {
 // API: Prueba de impresión (RAW TCP 9100)
 // POST /api/impresoras/test
 // body: { ip, port, text, cutter?, timeout?, copies? }
-// ⚠️ Recomendación: proteger con auth + rol ADMIN
 // ================================
 app.post("/api/impresoras/test", async (req, res) => {
   try {
@@ -113,14 +133,8 @@ app.post("/api/impresoras/test", async (req, res) => {
 // ================================
 // API Routes
 // ================================
-
-// Recomendado: separar auth en /api/auth
 app.use("/api/auth", authRoutes);
-
-// Pedidos en /api/pedidos
 app.use("/api/pedidos", pedidosRoutes);
-
-// Si mantienes tu index agrupado:
 app.use("/api", apiRoutes);
 
 // ================================

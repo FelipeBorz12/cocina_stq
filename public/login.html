@@ -1,73 +1,287 @@
 <!DOCTYPE html>
-<html lang="es">
+<html class="dark" lang="es">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Iniciar Sesión – Cocina</title>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Inicio de Sesión • Cocina - Tierra Querida</title>
+
+    <!-- (Se mantiene para: modales, shake, msg-error/msg-success usados por login.js) -->
     <link rel="stylesheet" href="./css/styles.css" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;700;900&family=Noto+Sans:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Material Symbols -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+
+    <!-- Tailwind Config -->
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#f2460d",
+              "background-light": "#f8f6f5",
+              "background-dark": "#221410",
+              "surface-dark": "#2c1a14",
+              "surface-light": "#ffffff",
+            },
+            fontFamily: {
+              display: ["Work Sans", "Noto Sans", "sans-serif"],
+            },
+            borderRadius: {
+              DEFAULT: "0.25rem",
+              lg: "0.5rem",
+              xl: "0.75rem",
+              full: "9999px",
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      /* Evitar que estilos globales antiguos (styles.css) fuercen el centrado
+         de forma no deseada en algunos navegadores. Tailwind manda. */
+      body {
+        display: block;
+      }
+    </style>
   </head>
 
-  <body class="bg-login page-login">
-    <div class="overlay"></div>
+  <body
+    class="bg-background-light dark:bg-background-dark font-display antialiased min-h-screen overflow-hidden"
+  >
+    <!-- Background Image Overlay -->
+    <div class="fixed inset-0 z-0 pointer-events-none">
+      <div
+        class="absolute inset-0 bg-cover bg-center opacity-10 dark:opacity-20"
+        style="
+          background-image: url('https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=2565&auto=format&fit=crop');
+        "
+      ></div>
+      <div
+        class="absolute inset-0 bg-gradient-to-b from-background-light/80 to-background-light dark:from-background-dark/80 dark:to-background-dark"
+      ></div>
+    </div>
 
-    <!-- Imágenes flotantes decorativas -->
-    <img
-      src="./img/logo.png"
-      class="floating-burger"
-      style="left: 10%; animation-delay: 0s"
-    />
-    <img
-      src="./img/burger2.png"
-      class="floating-burger"
-      style="left: 65%; animation-delay: 4s"
-    />
+    <!-- Main -->
+    <div class="relative z-10 min-h-screen flex items-center justify-center p-4">
+      <div class="w-full max-w-md">
+        <!-- Card -->
+        <div
+          id="authCard"
+          class="w-full bg-white dark:bg-surface-dark rounded-xl shadow-2xl border border-gray-200 dark:border-[#3a221b] overflow-hidden"
+        >
+          <!-- Header -->
+          <div class="flex flex-col items-center pt-10 pb-2 px-8 text-center">
+            <div
+              class="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-4 shadow-lg shadow-primary/30 text-white"
+              aria-hidden="true"
+            >
+              <span class="material-symbols-outlined text-3xl"
+                >local_fire_department</span
+              >
+            </div>
 
-    <div class="container auth-container">
-      <div class="card auth-card animate-in" id="authCard">
-        <img src="./img/logo.png" class="logo" alt="Logo" />
-        <h2 class="auth-title">Panel de Cocina</h2>
-        <p class="auth-subtitle">
-          Inicia sesión para ver y gestionar los pedidos en tiempo real.
-        </p>
-
-        <form id="loginForm">
-          <div class="input-group">
-            <label for="correo">Correo</label>
-            <input
-              type="email"
-              id="correo"
-              name="correo"
-              required
-              placeholder="tucorreo@ejemplo.com"
+            <img
+              src="./img/logo.png"
+              alt="Tierra Querida"
+              class="h-10 w-auto mb-3 drop-shadow"
             />
+
+            <h1
+              class="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight"
+            >
+              Cocina OS
+            </h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-2 text-sm font-medium">
+              Inicia sesión para gestionar pedidos en tiempo real
+            </p>
           </div>
 
-          <div class="input-group">
-            <label for="password">Contraseña</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              placeholder="••••••••"
-            />
+          <!-- Form -->
+          <form id="loginForm" class="px-8 py-8 flex flex-col gap-5">
+            <!-- Email -->
+            <div class="flex flex-col gap-1.5">
+              <label
+                class="text-sm font-semibold text-gray-700 dark:text-gray-300"
+                for="correo"
+                >Correo electrónico</label
+              >
+              <div class="relative flex items-center group">
+                <div
+                  class="absolute left-3.5 text-gray-400 dark:text-gray-500 group-focus-within:text-primary transition-colors"
+                  aria-hidden="true"
+                >
+                  <span class="material-symbols-outlined text-[20px]"
+                    >mail</span
+                  >
+                </div>
+
+                <input
+                  id="correo"
+                  name="correo"
+                  type="email"
+                  required
+                  autocomplete="email"
+                  placeholder="chef@tierraquerida.com"
+                  class="w-full bg-gray-50 dark:bg-[#1a0f0c] border border-gray-200 dark:border-[#492c22] text-gray-900 dark:text-white text-base rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary block pl-10 pr-3 py-3 shadow-sm transition-all duration-200"
+                />
+              </div>
+            </div>
+
+            <!-- Password -->
+            <div class="flex flex-col gap-1.5">
+              <div class="flex justify-between items-center">
+                <label
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  for="password"
+                  >Contraseña</label
+                >
+                <a
+                  class="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                  href="reset.html"
+                  >¿Olvidaste tu contraseña?</a
+                >
+              </div>
+
+              <div class="relative flex items-center group">
+                <div
+                  class="absolute left-3.5 text-gray-400 dark:text-gray-500 group-focus-within:text-primary transition-colors"
+                  aria-hidden="true"
+                >
+                  <span class="material-symbols-outlined text-[20px]"
+                    >lock</span
+                  >
+                </div>
+
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  class="w-full bg-gray-50 dark:bg-[#1a0f0c] border border-gray-200 dark:border-[#492c22] text-gray-900 dark:text-white text-base rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary block pl-10 pr-10 py-3 shadow-sm transition-all duration-200"
+                />
+
+                <button
+                  id="btnTogglePass"
+                  class="absolute right-3.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors flex items-center justify-center"
+                  type="button"
+                  aria-label="Mostrar u ocultar contraseña"
+                >
+                  <span
+                    id="iconTogglePass"
+                    class="material-symbols-outlined text-[20px]"
+                    >visibility_off</span
+                  >
+                </button>
+              </div>
+            </div>
+
+            <!-- Submit -->
+            <button
+              class="mt-2 w-full flex justify-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-extrabold text-white bg-primary hover:bg-[#d63a06] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-background-dark transition-all duration-200 uppercase tracking-wide transform active:scale-[0.98]"
+              type="submit"
+              id="btnLogin"
+            >
+              Ingresar al sistema
+            </button>
+
+            <!-- Inline message (login.js lo usa) -->
+            <p
+              id="msg"
+              class="msg text-sm text-center mt-1"
+              aria-live="polite"
+            ></p>
+
+            <!-- Links -->
+            <div class="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-500">
+              <a
+                class="font-semibold text-primary hover:text-primary/80 transition-colors"
+                href="register.html"
+                >Crear cuenta</a
+              >
+              <span class="text-gray-300 dark:text-gray-700">•</span>
+              <a
+                class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors"
+                href="impresoras.html"
+                >Impresoras</a
+              >
+            </div>
+          </form>
+
+          <!-- Footer -->
+          <div
+            class="px-8 py-5 bg-gray-50 dark:bg-[#231510] border-t border-gray-100 dark:border-[#3a221b] text-center"
+          >
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+              ¿Nuevo en el equipo?
+              <a
+                class="font-extrabold text-primary hover:text-primary/80 transition-colors ml-1"
+                href="register.html"
+                >Solicitar acceso</a
+              >
+            </p>
           </div>
+        </div>
 
-          <button class="btn-main" type="submit" id="btnLogin">
-            Ingresar
-          </button>
-
-          <div class="links">
-            <a href="register.html">Crear cuenta</a>
-            <a href="reset.html">¿Olvidaste tu contraseña?</a>
+        <!-- Extra footer -->
+        <div class="mt-8 text-center">
+          <div
+            class="flex gap-4 justify-center text-xs text-gray-500 dark:text-gray-500 mb-2"
+          >
+            <a class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors" href="#">
+              Ayuda
+            </a>
+            <span class="text-gray-300 dark:text-gray-700">•</span>
+            <a class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors" href="#">
+              Privacidad
+            </a>
+            <span class="text-gray-300 dark:text-gray-700">•</span>
+            <a class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors" href="#">
+              Términos
+            </a>
           </div>
-        </form>
-
-        <p id="msg" class="msg"></p>
+          <p class="text-xs text-gray-400 dark:text-gray-600">
+            © Tierra Querida • Cocina • v2.4.0
+          </p>
+        </div>
       </div>
     </div>
 
+    <!-- JS del login (NO cambiar ruta) -->
     <script src="./js/login.js"></script>
+
+    <!-- Toggle password -->
+    <script>
+      (function () {
+        const btn = document.getElementById("btnTogglePass");
+        const input = document.getElementById("password");
+        const icon = document.getElementById("iconTogglePass");
+
+        if (!btn || !input || !icon) return;
+
+        btn.addEventListener("click", () => {
+          const isHidden = input.type === "password";
+          input.type = isHidden ? "text" : "password";
+          icon.textContent = isHidden ? "visibility" : "visibility_off";
+        });
+      })();
+    </script>
 
     <!-- MODAL: CARGANDO -->
     <div id="modalLoading" class="modal modal-loading">
@@ -82,9 +296,7 @@
       <div class="modal-content">
         <h3>¡Bienvenido!</h3>
         <p>Sesión iniciada correctamente. Redirigiendo al panel...</p>
-        <button type="button" onclick="closeModal('modalLogin')">
-          Aceptar
-        </button>
+        <button type="button" onclick="closeModal('modalLogin')">Aceptar</button>
       </div>
     </div>
 
