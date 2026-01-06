@@ -1,13 +1,11 @@
 // src/index.ts
 import { Router } from "express";
 
-// Importa aquí todas las rutas que quieras agrupar
-import pedidosRoutes from "./routes/pedidos";
-
 const router = Router();
 
-// Agrupa tus rutas API
-router.use("/pedidos", pedidosRoutes);
+// health-check
+router.get("/health", (req, res) => {
+  res.json({ ok: true });
+});
 
 export default router;
-

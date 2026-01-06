@@ -1,10 +1,11 @@
+// src/middlewares/auth.ts
 import { Request, Response, NextFunction } from "express";
 import jwt, { Secret } from "jsonwebtoken";
 
 export type JwtUser = {
   sub: string;
-  store_id: string;
-  role: "ADMIN" | "COCINA" | string;
+  store_id?: string;
+  role?: string;
 };
 
 declare global {
@@ -21,31 +22,42 @@ function mustEnv(name: string): string {
   return v;
 }
 
-export function auth(requiredRoles?: string[]) {
+/**
+ * auth(): middleware JWT Bearer
+ * auth(["ADMIN"]): valida roles permitidos
+ */
+export function auth(allowedRoles?: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      const header = req.headers.authorization || "";
-      const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+      const h = String(req.headers.authorization || "");
+      const token = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
 
       if (!token) {
-        return res.status(401).json({ error: "No token" });
+        return res.status(401).json({ error: "Falta token" });
       }
 
-      const secret = mustEnv("JWT_ACCESS_SECRET") as Secret;
-      const payload = jwt.verify(token, secret) as JwtUser;
+      const secret = mustEnv("JWT_ACCESS_SECRET") as unknown as Secret;
+      const payload = jwt.verify(token, secret) as any;
 
-      if (!payload.store_id) {
-        return res.status(401).json({ error: "Token inválido (sin store_id)" });
+      req.user = {
+        sub: String(payload.sub || ""),
+        store_id: payload.store_id ? String(payload.store_id) : undefined,
+        role: payload.role ? String(payload.role) : undefined,
+      };
+
+      if (allowedRoles && allowedRoles.length > 0) {
+        const role = req.user.role || "";
+        if (!allowedRoles.includes(role)) {
+          return res.status(403).json({ error: "No autorizado" });
+        }
       }
 
-      if (requiredRoles?.length && !requiredRoles.includes(payload.role)) {
-        return res.status(403).json({ error: "No autorizado" });
-      }
-
-      req.user = payload;
-      next();
-    } catch {
+      return next();
+    } catch (e) {
       return res.status(401).json({ error: "Token inválido o expirado" });
     }
   };
 }
+
+// ✅ default export para compatibilidad con imports antiguos
+export default auth;

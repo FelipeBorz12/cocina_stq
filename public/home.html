@@ -265,6 +265,23 @@
             class="hidden text-[11px] sm:text-xs px-2 py-1 rounded-full bg-white/80 dark:bg-black/40 text-slate-700 dark:text-slate-200 border border-black/5 dark:border-white/10 max-w-[150px] sm:max-w-xs truncate"
           ></span>
 
+          <!-- chip usuario -->
+          <button
+            id="chipUsuario"
+            class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 dark:bg-black/30 border border-black/5 dark:border-white/10 shadow-sm"
+            onclick="abrirPerfil()"
+            title="Ver perfil"
+          >
+            <span class="material-symbols-outlined text-slate-700 dark:text-slate-100"
+              >account_circle</span
+            >
+            <span
+              id="chipUsuarioText"
+              class="text-xs font-extrabold text-slate-800 dark:text-slate-100 max-w-[260px] truncate"
+              >Usuario</span
+            >
+          </button>
+
           <button
             class="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 dark:bg-black/30 shadow-sm text-slate-900 dark:text-white"
             onclick="abrirPerfil()"
@@ -419,137 +436,6 @@
     <!-- JS principal -->
     <script src="/js/home.js"></script>
 
-    <!-- Script inline: sidebar, navegación, header impresora, perfil -->
-    <script>
-      function toggleSidebar() {
-        var sidebar = document.getElementById("sidebar");
-        var backdrop = document.getElementById("sidebar-backdrop");
-        var isHidden = sidebar.classList.contains("-translate-x-full");
-        if (isHidden) {
-          sidebar.classList.remove("-translate-x-full");
-          if (backdrop) backdrop.classList.remove("hidden");
-        } else {
-          sidebar.classList.add("-translate-x-full");
-          if (backdrop) backdrop.classList.add("hidden");
-        }
-      }
-
-      function irHome() {
-        window.location.href = "/home.html";
-      }
-      function irImpresoras() {
-        window.location.href = "/impresoras.html";
-      }
-      function irHistorico() {
-        window.location.href = "/historico.html";
-      }
-
-      function actualizarTextoImpresoraActual() {
-        var span = document.getElementById("impresora-actual");
-        if (!span) return;
-
-        var config = {};
-        try {
-          config = JSON.parse(localStorage.getItem("configImpresora") || "{}");
-        } catch (e) {
-          config = {};
-        }
-
-        if (config && config.nombre) {
-          span.textContent =
-            "Impresora: " +
-            config.nombre +
-            ":" +
-            (config.puerto || config.port || 9100);
-        } else {
-          span.textContent = "Impresora no configurada";
-        }
-        span.classList.remove("hidden");
-      }
-
-      function abrirPerfil() {
-        var modal = document.getElementById("modalPerfil");
-        var correoInput = document.getElementById("perfilCorreo");
-        var nombreInput = document.getElementById("perfilNombre");
-        var passInput = document.getElementById("perfilPassword");
-        var pass2Input = document.getElementById("perfilPassword2");
-
-        if (!modal) return;
-
-        var usuarioLogin = null;
-        try {
-          usuarioLogin = JSON.parse(localStorage.getItem("usuario") || "null");
-        } catch (e) {
-          usuarioLogin = null;
-        }
-
-        if (!usuarioLogin || !usuarioLogin.correo) {
-          if (typeof showModal === "function")
-            showModal("No se ha iniciado sesión.");
-          else alert("No se ha iniciado sesión.");
-          return;
-        }
-
-        if (correoInput) correoInput.value = usuarioLogin.correo;
-        if (nombreInput) nombreInput.value = "";
-        if (passInput) passInput.value = "";
-        if (pass2Input) pass2Input.value = "";
-        modal.classList.remove("hidden");
-      }
-
-      function cerrarPerfil() {
-        var modal = document.getElementById("modalPerfil");
-        if (!modal) return;
-        modal.classList.add("hidden");
-      }
-
-      function guardarPerfil() {
-        var correoInput = document.getElementById("perfilCorreo");
-        var nombreInput = document.getElementById("perfilNombre");
-        var passInput = document.getElementById("perfilPassword");
-        var pass2Input = document.getElementById("perfilPassword2");
-
-        var correo = correoInput ? correoInput.value.trim() : "";
-        var nombre = nombreInput ? nombreInput.value.trim() : "";
-        var password = passInput ? passInput.value : "";
-        var password2 = pass2Input ? pass2Input.value : "";
-
-        if (!correo) {
-          if (typeof showModal === "function") showModal("Correo inválido.");
-          else alert("Correo inválido.");
-          return;
-        }
-        if (!nombre) {
-          if (typeof showModal === "function")
-            showModal("El nombre no puede estar vacío.");
-          else alert("El nombre no puede estar vacío.");
-          return;
-        }
-        if (password || password2) {
-          if (password !== password2) {
-            if (typeof showModal === "function")
-              showModal("Las contraseñas no coinciden.");
-            else alert("Las contraseñas no coinciden.");
-            return;
-          }
-        }
-
-        console.log("Guardar perfil:", {
-          correo,
-          nombre,
-          contraseña: password || "(sin cambiar)",
-        });
-        if (typeof showModal === "function")
-          showModal("Perfil actualizado (simulado).");
-        else alert("Perfil actualizado (simulado).");
-        cerrarPerfil();
-      }
-
-      document.addEventListener("DOMContentLoaded", function () {
-        actualizarTextoImpresoraActual();
-      });
-    </script>
-
     <!-- 🔵 LOADER -->
     <div id="loader" class="hidden">
       <div class="spinner"></div>
@@ -568,6 +454,34 @@
         >
           Aceptar
         </button>
+      </div>
+    </div>
+
+    <!-- 🔒 MODAL AUTH (sesión expirada / perdida) -->
+    <div
+      id="modalAuth"
+      class="hidden fixed inset-0 bg-black/55 backdrop-blur-sm z-[99999] flex items-center justify-center px-3"
+    >
+      <div
+        class="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl border border-black/5 dark:border-white/10 overflow-hidden"
+      >
+        <div class="p-4 border-b border-black/5 dark:border-white/10">
+          <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">
+            Sesión requerida
+          </h3>
+          <p id="modalAuthText" class="text-sm text-slate-600 dark:text-slate-300 mt-1">
+            Tu sesión expiró o se perdió. Inicia sesión de nuevo.
+          </p>
+        </div>
+        <div class="p-4 flex gap-2 justify-end">
+          <button
+            type="button"
+            onclick="redirigirLogin()"
+            class="px-4 py-2 rounded-xl text-sm font-extrabold bg-primary text-white"
+          >
+            Ir al login
+          </button>
+        </div>
       </div>
     </div>
 
@@ -717,7 +631,7 @@
     <!-- 🔵 MODAL PERFIL -->
     <div
       id="modalPerfil"
-      class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+      class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] px-3"
     >
       <div
         class="bg-white dark:bg-slate-800 rounded-2xl p-5 w-full max-w-md shadow-2xl border border-black/5 dark:border-white/10"
@@ -726,12 +640,12 @@
           Perfil de usuario
         </h2>
         <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">
-          Cambia tu nombre y, opcionalmente, tu contraseña.
+          Verifica tus datos. (Guardar actualiza localmente; si luego quieres endpoint real, lo conectamos.)
         </p>
 
         <div class="mt-4 space-y-3">
           <label
-            class="block text-sm font-medium text-slate-700 dark:text-slate-200"
+            class="block text-sm font-bold text-slate-700 dark:text-slate-200"
           >
             Correo
             <input
@@ -743,7 +657,7 @@
           </label>
 
           <label
-            class="block text-sm font-medium text-slate-700 dark:text-slate-200"
+            class="block text-sm font-bold text-slate-700 dark:text-slate-200"
           >
             Nombre
             <input
@@ -755,7 +669,20 @@
           </label>
 
           <label
-            class="block text-sm font-medium text-slate-700 dark:text-slate-200"
+            class="block text-sm font-bold text-slate-700 dark:text-slate-200"
+          >
+            Celular
+            <input
+              id="perfilCelular"
+              type="tel"
+              inputmode="tel"
+              class="mt-1 block w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Ej: 3001234567"
+            />
+          </label>
+
+          <label
+            class="block text-sm font-bold text-slate-700 dark:text-slate-200"
           >
             Nueva contraseña
             <input
@@ -767,7 +694,7 @@
           </label>
 
           <label
-            class="block text-sm font-medium text-slate-700 dark:text-slate-200"
+            class="block text-sm font-bold text-slate-700 dark:text-slate-200"
           >
             Repetir contraseña
             <input
